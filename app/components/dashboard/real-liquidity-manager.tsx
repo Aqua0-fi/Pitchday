@@ -8,15 +8,37 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { TokenIcon } from '@/components/token-icon'
 import { useWallet } from '@/contexts/wallet-context'
 import { useSharedBalances } from '@/hooks/use-shared-balances'
+import { useQuery } from '@tanstack/react-query'
 import { V4Pool } from '@/lib/v4-api'
 import { useToast } from '@/hooks/use-toast'
-import { useWriteContract, usePublicClient } from 'wagmi'
+import { useWriteContract, usePublicClient, useReadContracts } from 'wagmi'
 import { formatUnits, parseUnits } from 'viem'
 import { ERC20_ABI, TRANCHES_SHARED_POOL, TRANCHES_POOLS } from '@/lib/contracts'
 import { ArrowDownToLine, ArrowUpFromLine, RefreshCw } from 'lucide-react'
 
-// Count Aqua-shared pools for amplification display
-const AQUA_POOL_COUNT = TRANCHES_POOLS.filter(p => p.aqua).length
+const AQUA_POOLS = TRANCHES_POOLS.filter(p => p.aqua)
+
+// Token addresses for poolId computation
+const MUSDC = '0x73c56ddD816e356387Caf740c804bb9D379BE47E'
+const MWETH = '0x7fF28651365c735c22960E27C2aFA97AbE4Cf2Ad'
+
+// ABI to read user position from TranchesHook
+const HOOK_POSITION_ABI = [
+  {
+    name: 'positions',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'positionKey', type: 'bytes32' }],
+    outputs: [
+      { name: 'tranche', type: 'uint8' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'depositBlock', type: 'uint256' },
+      { name: 'rewardDebt0', type: 'uint256' },
+      { name: 'rewardDebt1', type: 'uint256' },
+      { name: 'depositSqrtPriceX96', type: 'uint160' },
+    ],
+  },
+] as const
 
 const SHARED_POOL_ABI = [
   {
@@ -74,6 +96,47 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
     const tokenAddresses = uniqueTokens.map(t => t.address)
 
     const { data: balances, isLoading, refetch } = useSharedBalances(chainId, address || undefined, tokenAddresses)
+
+    // Read user positions from each Aqua pool to compute virtual capital
+    const { data: positionData } = useQuery({
+        queryKey: ['aqua-positions', address],
+        queryFn: async () => {
+            if (!address || !publicClient) return { count: 0, totalLiquidity: 0n }
+
+            let activeCount = 0
+            let totalLiq = 0n
+
+            for (const pool of AQUA_POOLS) {
+                // Compute poolId = keccak256(abi.encode(currency0, currency1, fee, tickSpacing, hooks))
+                const { encodePacked, keccak256, encodeAbiParameters } = await import('viem')
+                const poolId = keccak256(encodeAbiParameters(
+                    [{ type: 'address' }, { type: 'address' }, { type: 'uint24' }, { type: 'int24' }, { type: 'address' }],
+                    [MUSDC as `0x${string}`, MWETH as `0x${string}`, pool.fee, pool.tickSpacing, pool.hook]
+                ))
+                // posKey = keccak256(encodePacked(user, poolId))
+                const posKey = keccak256(encodePacked(['address', 'bytes32'], [address as `0x${string}`, poolId]))
+
+                const result = await publicClient.readContract({
+                    address: pool.hook,
+                    abi: HOOK_POSITION_ABI,
+                    functionName: 'positions',
+                    args: [posKey],
+                }) as any
+
+                const amount = result[1] as bigint
+                if (amount > 0n) {
+                    activeCount++
+                    totalLiq += amount
+                }
+            }
+
+            return { count: activeCount, totalLiquidity: totalLiq }
+        },
+        enabled: !!address && !!publicClient,
+        refetchInterval: 15000,
+    })
+
+    const activePoolCount = positionData?.count ?? 0
 
     // Modal state
     const [actionDialog, setActionDialog] = useState<{ isOpen: boolean; type: 'deposit' | 'withdraw'; tokenAddress: string } | null>(null)
@@ -158,8 +221,8 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                     {uniqueTokens.map(token => {
                         const bal = balances?.find(b => b.token.toLowerCase() === token.address.toLowerCase())
                         const depositedFmt = bal ? Number(formatUnits(BigInt(bal.freeBalance), token.decimals)).toFixed(4) : "0.0000"
-                        const amplifiedVal = bal ? BigInt(bal.freeBalance) * BigInt(AQUA_POOL_COUNT) : 0n
-                        const sharedFmt = bal ? Number(formatUnits(amplifiedVal, token.decimals)).toFixed(4) : "0.0000"
+                        const amplifiedVal = bal && activePoolCount > 0 ? BigInt(bal.freeBalance) * BigInt(activePoolCount) : 0n
+                        const sharedFmt = Number(formatUnits(amplifiedVal, token.decimals)).toFixed(4)
 
                         return (
                             <div key={token.address} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl border border-border/50 bg-secondary/10">
@@ -169,7 +232,7 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                                         <h4 className="font-semibold">{token.symbol}</h4>
                                         <div className="flex gap-4 mt-1 text-sm font-mono flex-wrap">
                                             <span className="text-muted-foreground">Deposited: {depositedFmt}</span>
-                                            <span className="text-emerald-500 font-medium">Virtual ({AQUA_POOL_COUNT}x): {sharedFmt}</span>
+                                            <span className="text-emerald-500 font-medium">Virtual{activePoolCount > 0 ? ` (${activePoolCount}x)` : ''}: {sharedFmt}</span>
                                             {bal && BigInt(bal.earnedFees || "0") > 0n && (
                                                 <span className="text-amber-500 font-medium">Fees: {Number(formatUnits(BigInt(bal.earnedFees), token.decimals)).toFixed(4)}</span>
                                             )}
