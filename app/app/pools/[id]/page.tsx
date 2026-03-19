@@ -4,18 +4,17 @@ import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { TokenPairIcon } from '@/components/token-icon'
 import { LoadingSpinner } from '@/components/loading-spinner'
 import { useV4Pools } from '@/hooks/use-v4-pools'
-import { ArrowLeft, TrendingUp, Info, ExternalLink, ArrowDownUp, Loader2, Droplets } from 'lucide-react'
+import { ArrowLeft, Info, Droplets } from 'lucide-react'
 import { useWallet } from '@/contexts/wallet-context'
 import { TranchesLiquidityModal } from '@/components/pools/tranches-liquidity-modal'
 import { isTranchesHook, isTraditionalHook, TRANCHES_SHARED_POOL, TRANCHES_POOLS, TRANCHES_POOL_KEY, ERC20_ABI } from '@/lib/contracts'
-import { useTranchesStats } from '@/hooks/use-tranches-stats'
-import { useReadContracts, useAccount } from 'wagmi'
+import { useReadContracts } from 'wagmi'
 import { formatUnits } from 'viem'
 import { RSCOracleSimulator } from '@/components/pools/rsc-oracle-simulator'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 
 function fmt(val: bigint, decimals = 18, dp = 4): string {
     const str = formatUnits(val, decimals)
@@ -87,7 +86,6 @@ export default function PoolDetailPage() {
     const isAqua = isTranchesHook(pool.poolKey.hooks) && !isTraditionalHook(pool.poolKey.hooks)
     const isTraditional = isTraditionalHook(pool.poolKey.hooks)
 
-    // Determine which SharedPool to read balances from
     const poolConfig = TRANCHES_POOLS.find(
         (p) => p.hook.toLowerCase() === pool.poolKey.hooks.toLowerCase()
     )
@@ -142,14 +140,8 @@ export default function PoolDetailPage() {
                 </div>
             </div>
 
-            {/* Pool Stats */}
-            <PoolStats pool={pool} sharedPoolAddr={sharedPoolAddr} isAqua={isAqua} />
-
-            {/* Swap UI */}
-            <div className="mb-8">
-                <h2 className="text-xl font-bold mb-4">Swap</h2>
-                <PoolSwapUI pool={pool} poolConfig={poolConfig} />
-            </div>
+            {/* Pool Stats + Liquidity Chart */}
+            <PoolStatsWithChart pool={pool} sharedPoolAddr={sharedPoolAddr} isAqua={isAqua} />
 
             {/* How it works */}
             <div className="rounded-xl border border-border/50 bg-secondary/20 p-6 flex items-start gap-4">
@@ -184,134 +176,88 @@ export default function PoolDetailPage() {
     )
 }
 
-// ─── Pool Stats Component ─────────────────────────────────────────────────────
+// ─── Pool Stats + Liquidity Bar Chart ──────────────────────────────────────────
 
-function PoolStats({ pool, sharedPoolAddr, isAqua }: { pool: any; sharedPoolAddr: string; isAqua: boolean }) {
+function PoolStatsWithChart({ pool, sharedPoolAddr, isAqua }: { pool: any; sharedPoolAddr: string; isAqua: boolean }) {
     const { mUSDC, mWETH, isLoading } = usePoolTokenBalances(sharedPoolAddr)
 
-    return (
-        <div className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total mWETH</p>
-                <p className="mt-1.5 text-2xl font-bold tabular-nums">
-                    {isLoading ? '...' : fmt(mWETH)}
-                </p>
-            </div>
-            <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total mUSDC</p>
-                <p className="mt-1.5 text-2xl font-bold tabular-nums">
-                    {isLoading ? '...' : fmt(mUSDC)}
-                </p>
-            </div>
-            <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Swap Fee</p>
-                <p className="mt-1.5 text-2xl font-bold tabular-nums text-emerald-400">
-                    {(pool.fee / 10000).toFixed(2)}%
-                </p>
-            </div>
-            <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Liquidity Type</p>
-                <p className={`mt-1.5 text-lg font-bold ${isAqua ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {isAqua ? 'Shared (Aqua0)' : 'Isolated'}
-                </p>
-            </div>
-        </div>
-    )
-}
+    const mWETHNum = Number(formatUnits(mWETH, 18))
+    const mUSDCNum = Number(formatUnits(mUSDC, 18))
 
-// ─── Swap UI Component ────────────────────────────────────────────────────────
-
-function PoolSwapUI({ pool, poolConfig }: { pool: any; poolConfig: any }) {
-    const { address } = useAccount()
-    const [direction, setDirection] = useState<'buy' | 'sell'>('buy')
-    const [amount, setAmount] = useState('')
-    const [isSwapping, setIsSwapping] = useState(false)
-
-    const inputToken = direction === 'buy' ? 'mUSDC' : 'mWETH'
-    const outputToken = direction === 'buy' ? 'mWETH' : 'mUSDC'
-
-    // Simple estimated output (1:1 pool price for demo)
-    const poolPrice = pool.currentPrice > 0 ? pool.currentPrice : 1
-    const estimatedOutput = amount
-        ? direction === 'buy'
-            ? (parseFloat(amount) * poolPrice).toFixed(4)
-            : (parseFloat(amount) / poolPrice).toFixed(4)
-        : '0'
+    const chartData = [
+        { name: 'mWETH', value: mWETHNum, fill: '#8b5cf6' },
+        { name: 'mUSDC', value: mUSDCNum, fill: '#10b981' },
+    ]
 
     return (
-        <div className="max-w-md">
-            <div className="rounded-xl border border-border/50 bg-secondary/20 p-5 space-y-4">
-                {/* Direction toggle */}
-                <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{inputToken} → {outputToken}</span>
-                    <button
-                        onClick={() => setDirection(d => d === 'buy' ? 'sell' : 'buy')}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04] hover:bg-white/[0.08] transition-colors"
-                    >
-                        <ArrowDownUp className="h-3.5 w-3.5 text-muted-foreground" />
-                    </button>
-                </div>
-
-                {/* Input */}
-                <div className="rounded-lg bg-white/[0.03] p-3">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">You pay</p>
-                    <div className="flex items-center gap-3">
-                        <Input
-                            type="number"
-                            placeholder="0.0"
-                            value={amount}
-                            onChange={(e) => setAmount(e.target.value)}
-                            className="border-0 bg-transparent text-xl font-bold shadow-none focus-visible:ring-0 p-0 h-auto"
-                            min="0"
-                        />
-                        <span className="shrink-0 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs font-bold text-muted-foreground">
-                            {inputToken}
-                        </span>
-                    </div>
-                </div>
-
-                {/* Arrow */}
-                <div className="flex justify-center">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/50 bg-secondary/20">
-                        <ArrowDownUp className="h-3.5 w-3.5 text-muted-foreground" />
-                    </div>
-                </div>
-
-                {/* Output */}
-                <div className="rounded-lg bg-white/[0.03] p-3">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">You receive (est.)</p>
-                    <div className="flex items-center gap-3">
-                        <p className="flex-1 text-xl font-bold text-muted-foreground">{estimatedOutput}</p>
-                        <span className="shrink-0 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs font-bold text-muted-foreground">
-                            {outputToken}
-                        </span>
-                    </div>
-                </div>
-
-                {/* Rate */}
-                <div className="rounded-lg bg-white/[0.02] px-3 py-2 text-center">
-                    <p className="text-xs text-muted-foreground">
-                        1 mWETH ≈ <span className="text-foreground/80 font-mono">{poolPrice.toFixed(2)}</span> mUSDC
+        <div className="mb-8 space-y-6">
+            {/* Stats row */}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total mWETH</p>
+                    <p className="mt-1.5 text-2xl font-bold tabular-nums">
+                        {isLoading ? '...' : fmt(mWETH)}
                     </p>
                 </div>
+                <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total mUSDC</p>
+                    <p className="mt-1.5 text-2xl font-bold tabular-nums">
+                        {isLoading ? '...' : fmt(mUSDC)}
+                    </p>
+                </div>
+                <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Swap Fee</p>
+                    <p className="mt-1.5 text-2xl font-bold tabular-nums text-emerald-400">
+                        {(pool.fee / 10000).toFixed(2)}%
+                    </p>
+                </div>
+                <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Liquidity Type</p>
+                    <p className={`mt-1.5 text-lg font-bold ${isAqua ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {isAqua ? 'Shared (Aqua0)' : 'Isolated'}
+                    </p>
+                </div>
+            </div>
 
-                {/* Swap button */}
-                <Button
-                    disabled={!amount || parseFloat(amount) <= 0 || isSwapping || !address}
-                    className="w-full gap-2"
-                    size="lg"
-                >
-                    {isSwapping ? (
-                        <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Swapping...
-                        </>
-                    ) : !address ? (
-                        'Connect Wallet'
-                    ) : (
-                        'Swap'
-                    )}
-                </Button>
+            {/* Liquidity bar chart */}
+            <div className="rounded-xl border border-border/50 bg-secondary/20 p-5">
+                <p className="text-sm font-semibold mb-4">Pool Liquidity</p>
+                {isLoading ? (
+                    <div className="h-48 animate-pulse rounded-lg bg-white/[0.03]" />
+                ) : (
+                    <div className="h-48">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={chartData} layout="vertical" margin={{ left: 10, right: 30 }}>
+                                <XAxis type="number" hide />
+                                <YAxis
+                                    type="category"
+                                    dataKey="name"
+                                    width={60}
+                                    tick={{ fill: '#9ca3af', fontSize: 12 }}
+                                    axisLine={false}
+                                    tickLine={false}
+                                />
+                                <Tooltip
+                                    contentStyle={{
+                                        backgroundColor: '#1a1a2e',
+                                        border: '1px solid rgba(255,255,255,0.1)',
+                                        borderRadius: '8px',
+                                        color: '#fff',
+                                        fontSize: '12px',
+                                        padding: '8px 12px',
+                                    }}
+                                    itemStyle={{ color: '#fff' }}
+                                    formatter={(value: number) => [value.toFixed(4), 'Amount']}
+                                />
+                                <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={32}>
+                                    {chartData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                )}
             </div>
         </div>
     )
