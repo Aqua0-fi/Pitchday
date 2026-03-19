@@ -20,6 +20,7 @@ import { useMappedTokens, useMappedChains } from '@/hooks/use-mapped-tokens'
 import { useV4Pools } from '@/hooks/use-v4-pools'
 import { useSwapQuote } from '@/hooks/use-swap-quote'
 import { useExecuteSwap } from '@/hooks/use-execute-swap'
+import { useDemoSwaps } from '@/hooks/use-demo-swaps'
 import { BACKEND_CHAIN_IDS } from '@/lib/contracts'
 import type { Token, Chain } from '@/lib/types'
 import { ArrowDownUp, Settings, Loader2, AlertCircle, Droplets, Info } from 'lucide-react'
@@ -150,6 +151,9 @@ export default function SwapPage() {
     error: swapError,
     txHash,
   } = useExecuteSwap(address ?? undefined)
+
+  // Demo swaps
+  const demoSwaps = useDemoSwaps()
 
   // Toast on swap completion
   useEffect(() => {
@@ -625,6 +629,44 @@ export default function SwapPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Demo Swaps */}
+        {isConnected && !needsChainSwitch && (
+          <Card className="mt-4 overflow-hidden">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-sm font-semibold">Demo: 5 Swaps Across All Pools</p>
+                  <p className="text-xs text-muted-foreground">Round-robin across Conservative, Standard, Aggressive, Traditional</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={demoSwaps.run}
+                  disabled={demoSwaps.isRunning}
+                  className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
+                >
+                  {demoSwaps.isRunning ? (
+                    <>
+                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      {demoSwaps.currentSwap >= 0 ? `Swap ${demoSwaps.currentSwap + 1}/${demoSwaps.totalSwaps}` : 'Approving...'}
+                    </>
+                  ) : 'Run Demo'}
+                </Button>
+              </div>
+              {demoSwaps.results.length > 0 && (
+                <div className="rounded-lg bg-secondary/30 p-3 max-h-40 overflow-y-auto">
+                  {demoSwaps.results.map((r, i) => (
+                    <p key={i} className={`text-xs font-mono ${r.startsWith('  ✓') ? 'text-emerald-400' : r.startsWith('===') ? 'text-violet-400 font-semibold' : 'text-muted-foreground'}`}>{r}</p>
+                  ))}
+                </div>
+              )}
+              {demoSwaps.error && (
+                <p className="text-xs text-red-400 mt-2">{demoSwaps.error}</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   )
