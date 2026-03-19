@@ -18,13 +18,13 @@ contract DemoSwaps is Script {
     // ─── Addresses ───────────────────────────────────────────────────────────────
     address constant MUSDC  = 0x73c56ddD816e356387Caf740c804bb9D379BE47E;
     address constant MWETH  = 0x7fF28651365c735c22960E27C2aFA97AbE4Cf2Ad;
-    address constant ROUTER = 0x84175aA7EfD2805Ff8Dc2CF49EC3990b50daf3a1; // PoolSwapTest
+    address constant ROUTER = 0xd2fd8fecbf11177E21EF075bb5Dc6a3Cc17c204a; // PoolSwapTest
 
     // Hooks (4 pools)
-    address constant HOOK_CONSERVATIVE = 0x16326eCA33f5B28e3D572Ed38B066919E8E555C5;
-    address constant HOOK_STANDARD     = 0x8E104beAC6dA7351B00b36E9f2B248F2BfD595c5;
-    address constant HOOK_AGGRESSIVE   = 0xA6a0b93092aF21cBAB5f69C243f0dA2cF466D5c5;
-    address constant HOOK_TRADITIONAL  = 0xAf99B4dBAeEfAeC6AbCb1018290ea705B3C895c5;
+    address constant HOOK_CONSERVATIVE = 0x6B418A5E3Eda280A83AAc39bA327a59893A995C5;
+    address constant HOOK_STANDARD     = 0xd6379Fe3a596cE6c63575C1e337750B82ea895C5;
+    address constant HOOK_AGGRESSIVE   = 0x564183f4bb2D45e160403CF09ef7D47Fe59955c5;
+    address constant HOOK_TRADITIONAL  = 0x164c3A74AFB2F3FFA278daDbF741BaFC4D3015C5;
 
     // sqrtPriceLimitX96 boundaries
     uint160 constant MIN_SQRT_PRICE = 4295128740;
