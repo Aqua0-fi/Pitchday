@@ -125,7 +125,7 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
 
                 const amount = result[1] as bigint
                 if (amount > 0n) {
-                    positions.push({ poolName: pool.name, amount, hook: pool.hook })
+                    positions.push({ poolName: pool.label, amount, hook: pool.hook })
                 }
             }
 
