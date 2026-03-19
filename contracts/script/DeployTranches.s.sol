@@ -230,9 +230,58 @@ contract DeployTranches is Script {
             routerAddrs[i] = address(router);
         }
 
+        // ─── Phase 3: Deploy 4th hook (Traditional LP — isolated SharedPool) ──
+
+        console.log("");
+        console.log("--- Pool 4: Traditional LP (0.30% - No Aqua) ---");
+
+        SharedLiquidityPool isolatedPool = new SharedLiquidityPool(deployer);
+        console.log("  IsolatedPool:", address(isolatedPool));
+
+        bytes memory tradInitCode = abi.encodePacked(
+            type(TranchesHook).creationCode,
+            abi.encode(IPoolManager(poolManagerAddr), isolatedPool, deployer)
+        );
+
+        (bytes32 tradSalt, address tradExpected) = HookMiner.find(
+            address(factory), TRANCHES_HOOK_FLAGS, keccak256(tradInitCode), 500000
+        );
+
+        address tradHookAddr = factory.deploy(tradSalt, tradInitCode);
+        require(tradHookAddr == tradExpected, "Traditional hook address mismatch");
+        TranchesHook tradHook = TranchesHook(payable(tradHookAddr));
+        console.log("  TranchesHook:", tradHookAddr);
+
+        TranchesRouter tradRouter = new TranchesRouter(IPoolManager(poolManagerAddr), tradHook, isolatedPool);
+        tradHook.setTrustedRouter(address(tradRouter));
+        console.log("  TranchesRouter:", address(tradRouter));
+
+        // Use 0.30% fee (same as Standard) for fair comparison
+        PoolKey memory tradKey = PoolKey({
+            currency0: currency0,
+            currency1: currency1,
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(tradHookAddr)
+        });
+
+        IPoolManager(poolManagerAddr).initialize(tradKey, SQRT_PRICE_1_1);
+        console.log("  Pool initialized (0.30% - isolated)");
+
+        setupRouter.modifyLiquidity(
+            tradKey,
+            ModifyLiquidityParams({
+                tickLower: (int24(-887220) / int24(60)) * int24(60),
+                tickUpper: (int24(887220) / int24(60)) * int24(60),
+                liquidityDelta: SEED_LIQUIDITY,
+                salt: bytes32(0)
+            })
+        );
+        console.log("  Seeded with base liquidity");
+
         vm.stopBroadcast();
 
-        // ─── Phase 3: Write deployment JSON ─────────────────────────────────────
+        // ─── Phase 4: Write deployment JSON ─────────────────────────────────────
 
         string memory deployments = string.concat(
             '{\n  "chainId": 1301,\n',
@@ -245,9 +294,12 @@ contract DeployTranches is Script {
 
         deployments = string.concat(deployments,
             '  "pools": [\n',
-            '    { "label": "Conservative", "fee": 500, "tickSpacing": 10, "hook": "', vm.toString(hookAddrs[0]), '", "router": "', vm.toString(routerAddrs[0]), '" },\n',
-            '    { "label": "Standard", "fee": 3000, "tickSpacing": 60, "hook": "', vm.toString(hookAddrs[1]), '", "router": "', vm.toString(routerAddrs[1]), '" },\n',
-            '    { "label": "Aggressive", "fee": 10000, "tickSpacing": 200, "hook": "', vm.toString(hookAddrs[2]), '", "router": "', vm.toString(routerAddrs[2]), '" }\n',
+            '    { "label": "Conservative", "fee": 500, "tickSpacing": 10, "hook": "', vm.toString(hookAddrs[0]), '", "router": "', vm.toString(routerAddrs[0]), '", "aqua": true },\n',
+            '    { "label": "Standard", "fee": 3000, "tickSpacing": 60, "hook": "', vm.toString(hookAddrs[1]), '", "router": "', vm.toString(routerAddrs[1]), '", "aqua": true },\n',
+            '    { "label": "Aggressive", "fee": 10000, "tickSpacing": 200, "hook": "', vm.toString(hookAddrs[2]), '", "router": "', vm.toString(routerAddrs[2]), '", "aqua": true },\n'
+        );
+        deployments = string.concat(deployments,
+            '    { "label": "Traditional", "fee": 3000, "tickSpacing": 60, "hook": "', vm.toString(tradHookAddr), '", "router": "', vm.toString(address(tradRouter)), '", "aqua": false, "isolatedPool": "', vm.toString(address(isolatedPool)), '" }\n',
             '  ]\n}'
         );
 
