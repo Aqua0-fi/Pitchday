@@ -142,6 +142,8 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
     const [actionDialog, setActionDialog] = useState<{ isOpen: boolean; type: 'deposit' | 'withdraw'; tokenAddress: string } | null>(null)
     const [amount, setAmount] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [needsApproval, setNeedsApproval] = useState(false)
+    const [approvalDone, setApprovalDone] = useState(false)
 
     const activeToken = uniqueTokens.find(t => actionDialog?.tokenAddress && t.address.toLowerCase() === actionDialog.tokenAddress.toLowerCase())
     const activeBalance = balances?.find(b => actionDialog?.tokenAddress && b.token.toLowerCase() === actionDialog.tokenAddress.toLowerCase())
@@ -152,6 +154,48 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
         setAmount(formatUnits(BigInt(val), activeToken.decimals))
     }
 
+    // Check allowance when amount changes
+    const checkAllowance = async () => {
+        if (!activeToken || !address || !publicClient || !amount || parseFloat(amount) <= 0) {
+            setNeedsApproval(false)
+            return
+        }
+        try {
+            const amountParsed = parseUnits(amount, activeToken.decimals)
+            const allowance = await publicClient.readContract({
+                address: activeToken.address as `0x${string}`,
+                abi: ERC20_ABI,
+                functionName: 'allowance',
+                args: [address as `0x${string}`, TRANCHES_SHARED_POOL],
+            }) as bigint
+            setNeedsApproval(allowance < amountParsed)
+            setApprovalDone(false)
+        } catch { setNeedsApproval(false) }
+    }
+
+    const handleApprove = async () => {
+        if (!activeToken || !address) return
+        setIsSubmitting(true)
+        try {
+            toast({ title: `Approving ${activeToken.symbol}...`, description: 'Confirm in wallet' })
+            const maxUint = 115792089237316195423570985008687907853269984665640564039457584007913129639935n
+            const hash = await writeContractAsync({
+                address: activeToken.address as `0x${string}`,
+                abi: ERC20_ABI,
+                functionName: 'approve',
+                args: [TRANCHES_SHARED_POOL, maxUint],
+            })
+            await publicClient!.waitForTransactionReceipt({ hash })
+            toast({ title: `✅ ${activeToken.symbol} Approved!` })
+            setNeedsApproval(false)
+            setApprovalDone(true)
+        } catch (error: any) {
+            toast({ title: "Approve Failed", description: error?.shortMessage || error.message, variant: "destructive" })
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
     const handleSubmit = async () => {
         if (!activeToken || !actionDialog || !amount || parseFloat(amount) <= 0 || !address) return
 
@@ -160,29 +204,6 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
             const amountParsed = parseUnits(amount, activeToken.decimals)
 
             if (actionDialog.type === 'deposit') {
-                // Step 1: Check allowance, approve if needed (use maxUint256 for infinite approval)
-                const allowance = await publicClient!.readContract({
-                    address: activeToken.address as `0x${string}`,
-                    abi: ERC20_ABI,
-                    functionName: 'allowance',
-                    args: [address as `0x${string}`, TRANCHES_SHARED_POOL],
-                }) as bigint
-
-                if (allowance < amountParsed) {
-                    toast({ title: `Approving ${activeToken.symbol}...`, description: 'Confirm in wallet' })
-                    const maxUint = 115792089237316195423570985008687907853269984665640564039457584007913129639935n
-                    const approveHash = await writeContractAsync({
-                        address: activeToken.address as `0x${string}`,
-                        abi: ERC20_ABI,
-                        functionName: 'approve',
-                        args: [TRANCHES_SHARED_POOL, maxUint],
-                    })
-                    await publicClient!.waitForTransactionReceipt({ hash: approveHash })
-                    // Small delay to let MetaMask sync nonce
-                    await new Promise(r => setTimeout(r, 2000))
-                }
-
-                // Step 2: Deposit to SharedPool
                 toast({ title: `Depositing ${activeToken.symbol}...`, description: 'Confirm in wallet' })
                 const depositHash = await writeContractAsync({
                     address: TRANCHES_SHARED_POOL,
@@ -191,10 +212,8 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                     args: [activeToken.address as `0x${string}`, amountParsed, address as `0x${string}`],
                 })
                 await publicClient!.waitForTransactionReceipt({ hash: depositHash })
-
                 toast({ title: "✅ Deposit Successful!" })
             } else {
-                // Withdraw from SharedPool
                 toast({ title: `Withdrawing ${activeToken.symbol}...`, description: 'Confirm in wallet' })
                 const withdrawHash = await writeContractAsync({
                     address: TRANCHES_SHARED_POOL,
@@ -203,12 +222,12 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                     args: [activeToken.address as `0x${string}`, amountParsed, address as `0x${string}`, address as `0x${string}`],
                 })
                 await publicClient!.waitForTransactionReceipt({ hash: withdrawHash })
-
                 toast({ title: "✅ Withdrawal Successful!" })
             }
 
             setActionDialog(null)
             setAmount('')
+            setApprovalDone(false)
             refetch()
         } catch (error: any) {
             console.error(error)
@@ -295,7 +314,8 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                                     type="number"
                                     placeholder="0.00"
                                     value={amount}
-                                    onChange={(e) => setAmount(e.target.value)}
+                                    onChange={(e) => { setAmount(e.target.value); setApprovalDone(false) }}
+                                    onBlur={actionDialog?.type === 'deposit' ? checkAllowance : undefined}
                                     className="pr-16 text-lg font-mono"
                                     disabled={isSubmitting}
                                 />
@@ -304,16 +324,25 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                                     variant="secondary"
                                     size="sm"
                                     className="absolute right-1 top-1/2 h-7 -translate-y-1/2 text-xs"
-                                    onClick={handleMax}
+                                    onClick={() => { handleMax(); setTimeout(checkAllowance, 100) }}
                                     disabled={isSubmitting}
                                 >
                                     MAX
                                 </Button>
                             </div>
 
-                            <Button onClick={handleSubmit} disabled={isSubmitting || !amount || parseFloat(amount) <= 0} className="w-full">
-                                {isSubmitting ? "Processing..." : `Confirm ${actionDialog?.type}`}
-                            </Button>
+                            {actionDialog?.type === 'deposit' && needsApproval && !approvalDone ? (
+                                <div className="space-y-2">
+                                    <Button onClick={handleApprove} disabled={isSubmitting || !amount || parseFloat(amount) <= 0} className="w-full" variant="outline">
+                                        {isSubmitting ? "Approving..." : `Step 1: Approve ${activeToken.symbol}`}
+                                    </Button>
+                                    <p className="text-xs text-center text-muted-foreground">Approve first, then deposit</p>
+                                </div>
+                            ) : (
+                                <Button onClick={handleSubmit} disabled={isSubmitting || !amount || parseFloat(amount) <= 0 || (actionDialog?.type === 'deposit' && needsApproval && !approvalDone)} className="w-full">
+                                    {isSubmitting ? "Processing..." : actionDialog?.type === 'deposit' ? (approvalDone ? 'Step 2: Deposit' : 'Confirm deposit') : 'Confirm withdraw'}
+                                </Button>
+                            )}
                         </div>
                     )}
                 </DialogContent>
