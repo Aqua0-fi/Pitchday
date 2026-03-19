@@ -67,9 +67,13 @@ export function useSwapQuote(
       }
 
       // Fallback: tick-based price estimate
-      const priceOf0In1 = Math.pow(1.0001, pool!.currentTick) *
+      // In Uniswap V4: price = 1.0001^tick = token0 per token1 (how much token0 for 1 token1)
+      // With tick=76013: price ≈ 2000 means 1 mWETH (token1) = 2000 mUSDC (token0)
+      const priceOf1In0 = Math.pow(1.0001, pool!.currentTick) *
         Math.pow(10, pool!.token0.decimals - pool!.token1.decimals)
-      const executionPrice = isToken0 ? priceOf0In1 : (1 / priceOf0In1)
+      // If selling token0 (mUSDC): you get token1, so divide by price
+      // If selling token1 (mWETH): you get token0, so multiply by price
+      const executionPrice = isToken0 ? (1 / priceOf1In0) : priceOf1In0
       const feeMultiplier = 1 - (pool!.fee / 1_000_000)
       const outVal = Number(amountIn) * executionPrice * feeMultiplier
       const amountOutStr = outVal.toFixed(Math.min(decimalsOut!, 6))
