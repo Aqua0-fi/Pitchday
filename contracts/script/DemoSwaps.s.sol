@@ -59,12 +59,12 @@ contract DemoSwaps is Script {
             "Swap 2: 0.1 mWETH -> mUSDC via Standard (0.30%)"
         );
 
-        // ── Swap 3: Aggressive (1.00%) — 1000 mUSDC → mWETH ──
+        // ── Swap 3: Aggressive (1.00%) — 100 mUSDC → mWETH ──
         _swap(
             HOOK_AGGRESSIVE, 10000, 200,
             true,        // zeroForOne (mUSDC → mWETH)
-            1000e18,     // 1000 mUSDC
-            "Swap 3: 1000 mUSDC -> mWETH via Aggressive (1.00%)"
+            100e18,      // 100 mUSDC
+            "Swap 3: 100 mUSDC -> mWETH via Aggressive (1.00%)"
         );
 
         // ── Swap 4: Traditional (0.30%) — 0.05 mWETH → mUSDC ──
