@@ -118,6 +118,13 @@ contract DeployTranches is Script {
     uint160 constant SQRT_PRICE_1_1 = 79228162514264337593543950336; // 1:1 price
     int256 constant SEED_LIQUIDITY = 100e18;
 
+    // ─── Pool configurations ─────────────────────────────────────────────────
+    struct PoolConfig {
+        uint24 fee;
+        int24 tickSpacing;
+        string label;
+    }
+
     function run() external {
         uint256 deployerKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address deployer = vm.addr(deployerKey);
@@ -125,129 +132,123 @@ contract DeployTranches is Script {
 
         require(block.chainid == UNICHAIN_SEPOLIA_ID, "Must deploy on Unichain Sepolia (1301)");
 
-        console.log("=== TrancheFi Deployment ===");
+        // 3 pools with different fee tiers
+        PoolConfig[3] memory pools = [
+            PoolConfig({ fee: 500,   tickSpacing: 10,  label: "Conservative (0.05%)" }),
+            PoolConfig({ fee: 3000,  tickSpacing: 60,  label: "Standard (0.30%)" }),
+            PoolConfig({ fee: 10000, tickSpacing: 200, label: "Aggressive (1.00%)" })
+        ];
+
+        console.log("=== TrancheFi Multi-Pool Deployment ===");
         console.log("Chain:       Unichain Sepolia (1301)");
         console.log("Deployer:   ", deployer);
         console.log("PoolManager:", poolManagerAddr);
-        console.log("Hook flags:  0x15C5");
+        console.log("Pools:       3 (0.05%, 0.30%, 1.00%)");
         console.log("");
 
         vm.startBroadcast(deployerKey);
 
-        // ─── Phase 1: Core contracts ────────────────────────────────────────────
+        // ─── Phase 1: Shared infra ─────────────────────────────────────────────
 
-        // 1. CREATE2 factory
         TranchesCreate2Factory factory = new TranchesCreate2Factory();
         console.log("CREATE2 Factory:", address(factory));
 
-        // 2. Deploy our own SharedLiquidityPool (with PositionAlreadyExists fix + new interface)
         SharedLiquidityPool sharedPool = new SharedLiquidityPool(deployer);
-        console.log("SharedLiquidityPool (own):", address(sharedPool));
+        console.log("SharedLiquidityPool:", address(sharedPool));
 
-        // 3. Mine hook salt
-        bytes memory hookInitCode =
-            abi.encodePacked(type(TranchesHook).creationCode, abi.encode(IPoolManager(poolManagerAddr), sharedPool, deployer));
-
-        (bytes32 salt, address expectedAddr) =
-            HookMiner.find(address(factory), TRANCHES_HOOK_FLAGS, keccak256(hookInitCode), 0);
-
-        console.log("Hook salt:  ", uint256(salt));
-        console.log("Expected:   ", expectedAddr);
-
-        // 4. Deploy TranchesHook via CREATE2
-        address hookAddr = factory.deploy(salt, hookInitCode);
-        require(hookAddr == expectedAddr, "Hook address mismatch");
-        TranchesHook hook = TranchesHook(payable(hookAddr));
-        console.log("TranchesHook:", hookAddr);
-
-        // 5. SharedLiquidityPool is permissionless (no onlyHook modifier)
-        //    No registration needed — any hook can use it.
-        console.log("SharedLiquidityPool is permissionless - no hook registration needed");
-
-        // 6. Deploy TranchesRouter
-        TranchesRouter tranchesRouter = new TranchesRouter(IPoolManager(poolManagerAddr), hook, sharedPool);
-        console.log("TranchesRouter:", address(tranchesRouter));
-
-        // 7. Set trusted router
-        hook.setTrustedRouter(address(tranchesRouter));
-        console.log("Router registered as trusted");
-
-        // ─── Phase 2: Use global Aqua0 tokens + pool init ──────────────────────
-
-        // 8. Use existing global mock tokens (mUSDC / mWETH)
-        // Already sorted: MUSDC (0x73c5...) < MWETH (0x7fF2...)
+        // Tokens
         address t0 = MUSDC;
         address t1 = MWETH;
         require(t0 < t1, "Token order wrong");
-
         Currency currency0 = Currency.wrap(t0);
         Currency currency1 = Currency.wrap(t1);
         console.log("currency0 (mUSDC):", t0);
         console.log("currency1 (mWETH):", t1);
 
-        // 9. Initialize pool
-        PoolKey memory poolKey = PoolKey({
-            currency0: currency0,
-            currency1: currency1,
-            fee: 3000,
-            tickSpacing: 60,
-            hooks: IHooks(hookAddr)
-        });
-
-        IPoolManager(poolManagerAddr).initialize(poolKey, SQRT_PRICE_1_1);
-        console.log("Pool initialized (1:1 price, 0.3% fee)");
-
-        // 10. Seed base liquidity
+        // Setup router for seeding (shared across all pools)
         TranchesSetupRouter setupRouter = new TranchesSetupRouter(IPoolManager(poolManagerAddr));
-
         IERC20(t0).approve(address(setupRouter), type(uint256).max);
         IERC20(t1).approve(address(setupRouter), type(uint256).max);
 
-        setupRouter.modifyLiquidity(
-            poolKey,
-            ModifyLiquidityParams({
-                tickLower: -887220, // full range
-                tickUpper: 887220,
-                liquidityDelta: SEED_LIQUIDITY,
-                salt: bytes32(0)
-            })
-        );
-        console.log("Pool seeded with base liquidity");
+        // Arrays to store deployed addresses
+        address[3] memory hookAddrs;
+        address[3] memory routerAddrs;
+
+        // ─── Phase 2: Deploy 3 hooks + pools ───────────────────────────────────
+
+        for (uint256 i = 0; i < 3; i++) {
+            console.log("");
+            console.log(string.concat("--- Pool ", vm.toString(i + 1), ": ", pools[i].label, " ---"));
+
+            // Mine salt for this hook
+            bytes memory hookInitCode = abi.encodePacked(
+                type(TranchesHook).creationCode,
+                abi.encode(IPoolManager(poolManagerAddr), sharedPool, deployer)
+            );
+
+            // Use different starting salt for each to avoid collisions
+            (bytes32 salt, address expectedAddr) = HookMiner.find(
+                address(factory), TRANCHES_HOOK_FLAGS, keccak256(hookInitCode), i * 100000
+            );
+
+            // Deploy hook
+            address hookAddr = factory.deploy(salt, hookInitCode);
+            require(hookAddr == expectedAddr, "Hook address mismatch");
+            TranchesHook hook = TranchesHook(payable(hookAddr));
+            console.log("  TranchesHook:", hookAddr);
+
+            // Deploy router
+            TranchesRouter router = new TranchesRouter(IPoolManager(poolManagerAddr), hook, sharedPool);
+            hook.setTrustedRouter(address(router));
+            console.log("  TranchesRouter:", address(router));
+
+            // Initialize pool with this fee tier
+            PoolKey memory poolKey = PoolKey({
+                currency0: currency0,
+                currency1: currency1,
+                fee: pools[i].fee,
+                tickSpacing: pools[i].tickSpacing,
+                hooks: IHooks(hookAddr)
+            });
+
+            IPoolManager(poolManagerAddr).initialize(poolKey, SQRT_PRICE_1_1);
+            console.log("  Pool initialized");
+
+            // Seed liquidity
+            setupRouter.modifyLiquidity(
+                poolKey,
+                ModifyLiquidityParams({
+                    tickLower: (int24(-887220) / pools[i].tickSpacing) * pools[i].tickSpacing,
+                    tickUpper: (int24(887220) / pools[i].tickSpacing) * pools[i].tickSpacing,
+                    liquidityDelta: SEED_LIQUIDITY,
+                    salt: bytes32(0)
+                })
+            );
+            console.log("  Seeded with base liquidity");
+
+            hookAddrs[i] = hookAddr;
+            routerAddrs[i] = address(router);
+        }
 
         vm.stopBroadcast();
 
         // ─── Phase 3: Write deployment JSON ─────────────────────────────────────
 
         string memory deployments = string.concat(
-            "{\n",
-            '  "chainId": 1301,\n',
-            '  "deployer": "',
-            vm.toString(deployer),
-            '",\n',
-            '  "poolManager": "',
-            vm.toString(poolManagerAddr),
-            '",\n',
-            '  "sharedLiquidityPool": "',
-            vm.toString(address(sharedPool)),
-            '",\n',
-            '  "tranchesHook": "',
-            vm.toString(hookAddr),
-            '",\n',
-            '  "tranchesRouter": "',
-            vm.toString(address(tranchesRouter)),
-            '",\n',
-            '  "hookSalt": "',
-            vm.toString(salt),
-            '",\n',
-            '  "currency0": "',
-            vm.toString(t0),
-            '",\n',
-            '  "currency1": "',
-            vm.toString(t1),
-            '",\n',
-            '  "poolFee": 3000,\n',
-            '  "poolTickSpacing": 60\n',
-            "}"
+            '{\n  "chainId": 1301,\n',
+            '  "deployer": "', vm.toString(deployer), '",\n',
+            '  "poolManager": "', vm.toString(poolManagerAddr), '",\n',
+            '  "sharedLiquidityPool": "', vm.toString(address(sharedPool)), '",\n',
+            '  "currency0": "', vm.toString(t0), '",\n',
+            '  "currency1": "', vm.toString(t1), '",\n'
+        );
+
+        deployments = string.concat(deployments,
+            '  "pools": [\n',
+            '    { "label": "Conservative", "fee": 500, "tickSpacing": 10, "hook": "', vm.toString(hookAddrs[0]), '", "router": "', vm.toString(routerAddrs[0]), '" },\n',
+            '    { "label": "Standard", "fee": 3000, "tickSpacing": 60, "hook": "', vm.toString(hookAddrs[1]), '", "router": "', vm.toString(routerAddrs[1]), '" },\n',
+            '    { "label": "Aggressive", "fee": 10000, "tickSpacing": 200, "hook": "', vm.toString(hookAddrs[2]), '", "router": "', vm.toString(routerAddrs[2]), '" }\n',
+            '  ]\n}'
         );
 
         vm.writeFile("deployments/v4-tranches-unichain-sepolia.json", deployments);
