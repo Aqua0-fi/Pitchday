@@ -115,7 +115,8 @@ contract DeployTranches is Script {
     address constant SHARED_POOL = 0x3293BA3287C602411Bf371896BCba9C80e3a04FF;
 
     // ─── Pool parameters ────────────────────────────────────────────────────────
-    uint160 constant SQRT_PRICE_1_1 = 79228162514264337593543950336; // 1:1 price
+    // 1 mWETH (token1) = 2000 mUSDC (token0) → price = 2000 → sqrtPriceX96 = sqrt(2000) * 2^96
+    uint160 constant SQRT_PRICE_1_1 = 3543191142285914378072636784640;
     int256 constant SEED_LIQUIDITY = 100e18;
 
     // ─── Pool configurations ─────────────────────────────────────────────────
