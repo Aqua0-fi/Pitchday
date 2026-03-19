@@ -268,6 +268,7 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                         const isETH = token.symbol.toLowerCase().includes('weth') || token.symbol.toLowerCase().includes('eth')
                         const usdValue = isETH ? depositedNum * ETH_PRICE_USD : depositedNum
                         const earnedFeesRaw = BigInt(bal?.earnedFees || "0")
+                        const amplifiedNum = depositedNum * activePositions.length
 
                         return (
                             <div key={token.address} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl border border-border/50 bg-secondary/10">
@@ -276,7 +277,10 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                                     <div>
                                         <h4 className="font-semibold">{token.symbol}</h4>
                                         <div className="flex gap-4 mt-1 text-sm font-mono flex-wrap">
-                                            <span className="text-muted-foreground">Deposited: {depositedFmt}</span>
+                                            <span className="text-muted-foreground">{depositedFmt}</span>
+                                            {activePositions.length > 0 && (
+                                                <span className="text-emerald-500 font-medium">{amplifiedNum.toFixed(4)} amplified</span>
+                                            )}
                                             <span className="text-muted-foreground/60">~${usdValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                                             {earnedFeesRaw > 0n && (
                                                 <span className="text-amber-500 font-medium">Fees: {Number(formatUnits(earnedFeesRaw, token.decimals)).toFixed(4)}</span>
@@ -305,29 +309,6 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                             </div>
                         )
                     })}
-
-                    {/* Active Pool Positions — only shown if user has amplified to pools */}
-                    {activePositions.length > 0 && (
-                        <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-                            <h4 className="text-sm font-semibold text-emerald-400 mb-3">Amplified in {activePositions.length} pool{activePositions.length > 1 ? 's' : ''}</h4>
-                            <div className="space-y-2">
-                                {activePositions.map(pos => (
-                                    <div key={pos.hook} className="flex items-center justify-between text-sm">
-                                        <span className="text-muted-foreground">{pos.poolName}</span>
-                                        <span className="font-mono">{Number(formatUnits(pos.amount, 18)).toFixed(4)} liquidity</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {activePositions.length === 0 && (
-                        <div className="mt-2 rounded-lg border border-dashed border-border/40 p-3 text-center">
-                            <p className="text-xs text-muted-foreground">
-                                Capital deposited but not yet amplified. Go to a pool to amplify your capital across strategies.
-                            </p>
-                        </div>
-                    )}
                 </div>
             </CardContent>
 
