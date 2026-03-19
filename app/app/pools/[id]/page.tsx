@@ -226,14 +226,14 @@ function PoolStatsWithChart({ pool, sharedPoolAddr, isAqua }: { pool: any; share
                         <div>
                             <div className="flex items-center justify-between mb-1.5">
                                 <div className="flex items-center gap-2">
-                                    <div className="h-3 w-3 rounded-full bg-violet-500" />
+                                    <div className="h-3 w-3 rounded-full bg-blue-500" />
                                     <span className="text-sm font-medium">mWETH</span>
                                 </div>
                                 <span className="text-sm font-bold tabular-nums">{mWETHNum.toFixed(4)}</span>
                             </div>
                             <div className="h-3 w-full rounded-full bg-white/[0.04] overflow-hidden">
                                 <div
-                                    className="h-full rounded-full bg-gradient-to-r from-violet-600 to-violet-400 transition-all duration-500"
+                                    className="h-full rounded-full bg-gradient-to-r from-blue-600 to-blue-400 transition-all duration-500"
                                     style={{ width: `${Math.max((mWETHNum / maxVal) * 100, 2)}%` }}
                                 />
                             </div>
