@@ -294,27 +294,40 @@ export function TrancheDeposit({ poolPrice = 2000, hookAddress }: { poolPrice?: 
 
   const isProcessing = deposit.step !== 'idle' && deposit.step !== 'done' && deposit.step !== 'error'
 
+  const isAqua = deposit.isAqua
+
   const stepLabel: Record<string, string> = {
     idle: '',
-    depositing: 'Amplifying capital...',
+    approving: 'Approving token...',
+    depositing: isAqua ? 'Amplifying capital...' : 'Depositing...',
     confirming: 'Confirming transaction...',
-    done: 'Amplification successful!',
+    done: isAqua ? 'Amplification successful!' : 'Deposit successful!',
     error: deposit.error || 'Error',
   }
 
   return (
     <div className="space-y-4">
-      {/* Amplify header */}
-      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-        <div className="flex items-center gap-2">
-          <Zap className="h-5 w-5 text-emerald-400" />
-          <span className="font-bold text-emerald-400">Amplify Capital to This Pool</span>
+      {/* Header — different for Aqua vs Traditional */}
+      {isAqua ? (
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+          <div className="flex items-center gap-2">
+            <Zap className="h-5 w-5 text-emerald-400" />
+            <span className="font-bold text-emerald-400">Amplify Capital to This Pool</span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">Your deposited capital will earn swap fees from this pool. Same capital can back multiple pools simultaneously.</p>
         </div>
-        <p className="text-xs text-muted-foreground mt-1">Your deposited capital will earn swap fees from this pool. Same capital can back multiple pools simultaneously.</p>
-      </div>
+      ) : (
+        <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4">
+          <div className="flex items-center gap-2">
+            <ArrowDownToLine className="h-5 w-5 text-red-400" />
+            <span className="font-bold text-red-400">Direct Deposit (Traditional)</span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">Tokens are transferred from your wallet directly into this isolated pool. Capital is locked here only.</p>
+        </div>
+      )}
 
-      {/* SharedPool balance context */}
-      {(sharedBalance0 > 0n || sharedBalance1 > 0n) && (
+      {/* SharedPool balance context (Aqua only) */}
+      {isAqua && (sharedBalance0 > 0n || sharedBalance1 > 0n) && (
         <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-2.5 flex items-center gap-2">
           <Info className="h-4 w-4 text-blue-400 shrink-0" />
           <p className="text-xs text-blue-300/80">
@@ -371,7 +384,7 @@ export function TrancheDeposit({ poolPrice = 2000, hookAddress }: { poolPrice?: 
       {deposit.step === 'done' ? (
         <Button onClick={() => { deposit.reset(); setAmount0(''); setAmount1('') }} variant="outline" className="w-full gap-2">
           <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-          Amplified Successfully — Add More
+          {isAqua ? 'Amplified Successfully — Add More' : 'Deposited Successfully — Add More'}
         </Button>
       ) : deposit.step === 'error' ? (
         <div className="space-y-2">
@@ -394,7 +407,7 @@ export function TrancheDeposit({ poolPrice = 2000, hookAddress }: { poolPrice?: 
         >
           {isProcessing && <Loader2 className="h-4 w-4 animate-spin" />}
           {deposit.step === 'idle'
-            ? 'Amplify Capital'
+            ? (isAqua ? 'Amplify Capital' : 'Deposit Liquidity')
             : stepLabel[deposit.step]}
         </Button>
       )}

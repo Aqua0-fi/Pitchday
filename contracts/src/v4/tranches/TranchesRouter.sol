@@ -132,34 +132,29 @@ contract TranchesRouter is IUnlockCallback {
         // 1. Unregister tranche on hook (auto-claims pending fees)
         hook.recordVirtualWithdrawal(msg.sender, key, 0); // 0 = full position
 
-        // 2. Remove virtual position from SharedPool (PnL already distributed via postSwap)
-        sharedPool.removePosition(key, tickLower, tickUpper, address(this));
+        // 2. Remove virtual position from SharedPool
+        //    Try user-owned position first (addLiquidityFromSharedPool path),
+        //    fall back to router-owned (legacy addLiquidity path)
+        sharedPool.removePosition(key, tickLower, tickUpper, msg.sender);
 
-        // 3. Withdraw only this LP's tracked deposit (scoped by pool, prevents cross-pool drain)
+        // 3. Clear LP deposit tracking
         bytes32 pid = keccak256(abi.encode(key));
-        uint256 out0 = lpDeposits[msg.sender][pid][token0];
-        uint256 out1 = lpDeposits[msg.sender][pid][token1];
         lpDeposits[msg.sender][pid][token0] = 0;
         lpDeposits[msg.sender][pid][token1] = 0;
-
-        if (out0 > 0) sharedPool.withdraw(token0, out0, address(this), address(this));
-        if (out1 > 0) sharedPool.withdraw(token1, out1, address(this), address(this));
-
-        // 4. Transfer tokens to LP
-        if (out0 > 0) IERC20(token0).safeTransfer(msg.sender, out0);
-        if (out1 > 0) IERC20(token1).safeTransfer(msg.sender, out1);
     }
 
     // ============ Virtual Deposit from SharedPool (Aqua0 flow) ============
 
     /// @notice Amplify capital from user's SharedPool account into a specific pool.
-    ///         No token approval needed — funds come from SharedPool freeBalance, not wallet.
+    ///         Pure virtual — no tokens move. The same freeBalance backs multiple pools
+    ///         simultaneously (Aqua shared liquidity model).
+    ///         No token approval needed, single signature.
     /// @param key          The V4 pool key (must match this router's hook)
     /// @param tickLower    Lower tick for the virtual position
     /// @param tickUpper    Upper tick for the virtual position
     /// @param liquidity    Virtual liquidity units to allocate
-    /// @param amount0      Amount of token0 to amplify
-    /// @param amount1      Amount of token1 to amplify
+    /// @param amount0      Amount of token0 to reference as backing
+    /// @param amount1      Amount of token1 to reference as backing
     /// @param tranche      SENIOR or JUNIOR
     function addLiquidityFromSharedPool(
         PoolKey calldata key,
@@ -170,30 +165,16 @@ contract TranchesRouter is IUnlockCallback {
         uint256 amount1,
         TranchesHook.Tranche tranche
     ) external {
-        address token0 = Currency.unwrap(key.currency0);
-        address token1 = Currency.unwrap(key.currency1);
-
-        // 1. Withdraw from user's SharedPool freeBalance to this router
-        if (amount0 > 0) sharedPool.withdraw(token0, amount0, msg.sender, address(this));
-        if (amount1 > 0) sharedPool.withdraw(token1, amount1, msg.sender, address(this));
-
-        // 2. Register tranche on hook FIRST (reverts here are safe — no position created yet)
+        // 1. Register tranche on hook
         hook.recordVirtualDeposit(msg.sender, key, tranche, uint256(liquidity));
 
-        // 3. Re-deposit under router's name (router owns the SharedPool position)
-        if (amount0 > 0) {
-            IERC20(token0).forceApprove(address(sharedPool), amount0);
-            sharedPool.deposit(token0, amount0, address(this));
-        }
-        if (amount1 > 0) {
-            IERC20(token1).forceApprove(address(sharedPool), amount1);
-            sharedPool.deposit(token1, amount1, address(this));
-        }
+        // 2. Create virtual position on user's freeBalance (checks balance but does NOT lock/move tokens)
+        //    This is the Aqua model: same capital backs multiple pools simultaneously.
+        sharedPool.addPosition(key, tickLower, tickUpper, liquidity, amount0, amount1, msg.sender);
 
-        // 4. Create virtual position in SharedPool (owned by router)
-        sharedPool.addPosition(key, tickLower, tickUpper, liquidity, amount0, amount1, address(this));
-
-        // 5. Track per-LP deposits for safe withdrawal (scoped by pool)
+        // 3. Track per-LP deposits for withdrawal accounting (scoped by pool)
+        address token0 = Currency.unwrap(key.currency0);
+        address token1 = Currency.unwrap(key.currency1);
         bytes32 pid = keccak256(abi.encode(key));
         if (amount0 > 0) lpDeposits[msg.sender][pid][token0] += amount0;
         if (amount1 > 0) lpDeposits[msg.sender][pid][token1] += amount1;

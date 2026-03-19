@@ -99,7 +99,7 @@ export const POOL_MANAGER: Address = '0x00B036B58a818B1BC34d502D3fE730Db729e62AC
 
 // ─── TrancheFi Multi-Pool (Unichain Sepolia) ─────────────────────────────────
 
-export const TRANCHES_SHARED_POOL: Address = '0x3612ECc83Ab3b15bD6B41dE41CE9C35ACd087d3a'
+export const TRANCHES_SHARED_POOL: Address = '0xb4FC21524B65D97E2f68d6Eb25d430A40eA5C52A'
 
 // 4 TranchesHook pools — 3 Aqua (shared) + 1 Traditional (isolated)
 export const TRANCHES_POOLS = [
@@ -107,34 +107,34 @@ export const TRANCHES_POOLS = [
     label: 'Conservative',
     fee: 500,
     tickSpacing: 10,
-    hook: '0x5B34861993e89AD636512397a5Cd29c04FBb95C5' as Address,
-    router: '0x92dB16B5d4FAb5f4c3047A79E4464Db6807B5B36' as Address,
+    hook: '0xeaF9d04eC0a529E7B2dFF11Cc1083758973195C5' as Address,
+    router: '0x49f25519705C87dfF1aEe1C80878016C7be84E25' as Address,
     aqua: true,
   },
   {
     label: 'Standard',
     fee: 3000,
     tickSpacing: 60,
-    hook: '0xDF54a6C5Fc860105103d4780163c8f537dD055C5' as Address,
-    router: '0x714be4a852b913EB0F865C2e76CcC357aF49F406' as Address,
+    hook: '0x3A985b8926C2755fF8cb645A122a1b657F6815c5' as Address,
+    router: '0xF2f38f525F6E90F6704Af465e2641e5682559BcC' as Address,
     aqua: true,
   },
   {
     label: 'Aggressive',
     fee: 10000,
     tickSpacing: 200,
-    hook: '0x186C6E74161767DC632137C482b869A4F22a15c5' as Address,
-    router: '0x76207552632A9913A2560F3772023c5d22669895' as Address,
+    hook: '0x0962d8f0f61C5a235C54b0C77E8c2222381955c5' as Address,
+    router: '0x2f4D6E683377fA69692fA27D848D96E4267a8db1' as Address,
     aqua: true,
   },
   {
     label: 'Traditional',
     fee: 3000,
     tickSpacing: 60,
-    hook: '0x6E343256467eFE72264fD49f2229Ddbb527915C5' as Address,
-    router: '0x0753C70Cdea2eAF19FF77fe02DbA7AdEcBBC7CB1' as Address,
+    hook: '0x09f791Ffaa47884bAED54bA4f8990070094955C5' as Address,
+    router: '0x3d12fA0e2765A97c10f66d634CA9437658544Bd4' as Address,
     aqua: false,
-    isolatedPool: '0x5a409DF93C30D44e43Fa446490E52Bc770D37aF0' as Address,
+    isolatedPool: '0xaE73cb3158125C250f740a49D99c2d11062DBcB4' as Address,
   },
 ] as const
 

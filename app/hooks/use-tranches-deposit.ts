@@ -6,10 +6,11 @@ import {
   TRANCHES_ROUTER_ABI,
   TRANCHES_POOL_KEY,
   TRANCHES_POOLS,
+  ERC20_ABI,
 } from '@/lib/contracts'
 import type { Address } from 'viem'
 
-type DepositStep = 'idle' | 'depositing' | 'confirming' | 'done' | 'error'
+type DepositStep = 'idle' | 'approving' | 'depositing' | 'confirming' | 'done' | 'error'
 
 export function useTranchesDeposit(hookAddress?: Address) {
   // Find the correct router for this hook
@@ -17,6 +18,7 @@ export function useTranchesDeposit(hookAddress?: Address) {
     ? TRANCHES_POOLS.find(p => p.hook.toLowerCase() === hookAddress.toLowerCase())
     : undefined
   const router = poolConfig?.router ?? TRANCHES_ROUTER
+  const isAqua = poolConfig?.aqua ?? true
 
   const [step, setStep] = useState<DepositStep>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -58,33 +60,83 @@ export function useTranchesDeposit(hookAddress?: Address) {
         hooks: hookAddress,
       } : TRANCHES_POOL_KEY
 
-      // Amplify from SharedPool — no token approvals needed!
-      // Funds come from user's SharedPool freeBalance, not wallet.
-      setStep('depositing')
-      const hash = await writeContractAsync({
-        address: router,
-        abi: TRANCHES_ROUTER_ABI,
-        functionName: 'addLiquidityFromSharedPool',
-        args: [
-          poolKey,
-          tickLower,
-          tickUpper,
-          liquidity,
-          amt0,
-          amt1,
-          tranche,
-        ],
-      })
+      if (isAqua) {
+        // Aqua pool: amplify from SharedPool — no token approvals needed
+        setStep('depositing')
+        const hash = await writeContractAsync({
+          address: router,
+          abi: TRANCHES_ROUTER_ABI,
+          functionName: 'addLiquidityFromSharedPool',
+          args: [poolKey, tickLower, tickUpper, liquidity, amt0, amt1, tranche],
+        })
+        setStep('confirming')
+        setTxHash(hash)
+        await publicClient!.waitForTransactionReceipt({ hash })
+      } else {
+        // Traditional pool: direct deposit from wallet (needs token approvals)
+        if (!account) throw new Error('Wallet not connected')
 
-      setStep('confirming')
-      setTxHash(hash)
-      await publicClient!.waitForTransactionReceipt({ hash })
+        // Approve token0 if needed
+        if (amt0 > 0n) {
+          const allowance0 = await publicClient!.readContract({
+            address: TRANCHES_POOL_KEY.currency0,
+            abi: ERC20_ABI,
+            functionName: 'allowance',
+            args: [account, router as Address],
+          }) as bigint
+          if (allowance0 < amt0) {
+            setStep('approving')
+            const maxUint = 115792089237316195423570985008687907853269984665640564039457584007913129639935n
+            const approveHash = await writeContractAsync({
+              address: TRANCHES_POOL_KEY.currency0,
+              abi: ERC20_ABI,
+              functionName: 'approve',
+              args: [router as Address, maxUint],
+            })
+            await publicClient!.waitForTransactionReceipt({ hash: approveHash })
+          }
+        }
+
+        // Approve token1 if needed
+        if (amt1 > 0n) {
+          const allowance1 = await publicClient!.readContract({
+            address: TRANCHES_POOL_KEY.currency1,
+            abi: ERC20_ABI,
+            functionName: 'allowance',
+            args: [account, router as Address],
+          }) as bigint
+          if (allowance1 < amt1) {
+            setStep('approving')
+            const maxUint = 115792089237316195423570985008687907853269984665640564039457584007913129639935n
+            const approveHash = await writeContractAsync({
+              address: TRANCHES_POOL_KEY.currency1,
+              abi: ERC20_ABI,
+              functionName: 'approve',
+              args: [router as Address, maxUint],
+            })
+            await publicClient!.waitForTransactionReceipt({ hash: approveHash })
+          }
+        }
+
+        // Direct deposit via addLiquidity (tokens come from wallet)
+        setStep('depositing')
+        const hash = await writeContractAsync({
+          address: router,
+          abi: TRANCHES_ROUTER_ABI,
+          functionName: 'addLiquidity',
+          args: [poolKey, tickLower, tickUpper, liquidity, amt0, amt1, tranche],
+        })
+        setStep('confirming')
+        setTxHash(hash)
+        await publicClient!.waitForTransactionReceipt({ hash })
+      }
+
       setStep('done')
     } catch (err) {
       setStep('error')
-      setError(err instanceof Error ? err.message : 'Amplification failed')
+      setError(err instanceof Error ? err.message : 'Deposit failed')
     }
-  }, [writeContractAsync, publicClient, account, hookAddress, router, poolConfig])
+  }, [writeContractAsync, publicClient, account, hookAddress, router, poolConfig, isAqua])
 
   const reset = useCallback(() => {
     setStep('idle')
@@ -92,5 +144,5 @@ export function useTranchesDeposit(hookAddress?: Address) {
     setTxHash(undefined)
   }, [])
 
-  return { execute, step, error, txHash, reset }
+  return { execute, step, error, txHash, reset, isAqua }
 }
