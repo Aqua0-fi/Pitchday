@@ -43,6 +43,33 @@ const HOOK_POSITION_ABI = [
   },
 ] as const
 
+const POOL_KEY_TUPLE = {
+  type: 'tuple' as const,
+  components: [
+    { name: 'currency0', type: 'address' as const },
+    { name: 'currency1', type: 'address' as const },
+    { name: 'fee', type: 'uint24' as const },
+    { name: 'tickSpacing', type: 'int24' as const },
+    { name: 'hooks', type: 'address' as const },
+  ],
+}
+
+const PENDING_FEES_ABI = [
+  {
+    name: 'pendingFees',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'lp', type: 'address' },
+      { name: 'key', ...POOL_KEY_TUPLE },
+    ],
+    outputs: [
+      { name: 'pending0', type: 'uint256' },
+      { name: 'pending1', type: 'uint256' },
+    ],
+  },
+] as const
+
 const SHARED_POOL_ABI = [
   {
     name: 'deposit',
@@ -100,13 +127,13 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
 
     const { data: balances, isLoading, refetch } = useSharedBalances(chainId, address || undefined, tokenAddresses)
 
-    // Read user positions from each Aqua pool (per-pool breakdown, no auto-amplification)
+    // Read user positions + pending fees from each Aqua pool
     const { data: poolPositions } = useQuery({
         queryKey: ['aqua-positions', address],
         queryFn: async () => {
             if (!address || !publicClient) return []
 
-            const positions: { poolName: string; amount: bigint; hook: string }[] = []
+            const positions: { poolName: string; amount: bigint; hook: string; fees0: bigint; fees1: bigint }[] = []
 
             for (const pool of AQUA_POOLS) {
                 const { encodePacked, keccak256, encodeAbiParameters } = await import('viem')
@@ -125,14 +152,76 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
 
                 const amount = result[1] as bigint
                 if (amount > 0n) {
-                    positions.push({ poolName: pool.label, amount, hook: pool.hook })
+                    // Also fetch pending fees for this pool
+                    let fees0 = 0n, fees1 = 0n
+                    try {
+                        const feesResult = await publicClient.readContract({
+                            address: pool.hook,
+                            abi: PENDING_FEES_ABI,
+                            functionName: 'pendingFees',
+                            args: [
+                                address as `0x${string}`,
+                                {
+                                    currency0: MUSDC as `0x${string}`,
+                                    currency1: MWETH as `0x${string}`,
+                                    fee: pool.fee,
+                                    tickSpacing: pool.tickSpacing,
+                                    hooks: pool.hook,
+                                },
+                            ],
+                        }) as [bigint, bigint]
+                        fees0 = feesResult[0]
+                        fees1 = feesResult[1]
+                    } catch {}
+                    positions.push({ poolName: pool.label, amount, hook: pool.hook, fees0, fees1 })
+                }
+            }
+
+            // Also check Traditional pool
+            const tradPool = TRANCHES_POOLS.find(p => !p.aqua)
+            if (tradPool) {
+                const { encodePacked, keccak256, encodeAbiParameters } = await import('viem')
+                const poolId = keccak256(encodeAbiParameters(
+                    [{ type: 'address' }, { type: 'address' }, { type: 'uint24' }, { type: 'int24' }, { type: 'address' }],
+                    [MUSDC as `0x${string}`, MWETH as `0x${string}`, tradPool.fee, tradPool.tickSpacing, tradPool.hook]
+                ))
+                const posKey = keccak256(encodePacked(['address', 'bytes32'], [address as `0x${string}`, poolId]))
+                const result = await publicClient.readContract({
+                    address: tradPool.hook,
+                    abi: HOOK_POSITION_ABI,
+                    functionName: 'positions',
+                    args: [posKey],
+                }) as any
+                const amount = result[1] as bigint
+                if (amount > 0n) {
+                    let fees0 = 0n, fees1 = 0n
+                    try {
+                        const feesResult = await publicClient.readContract({
+                            address: tradPool.hook,
+                            abi: PENDING_FEES_ABI,
+                            functionName: 'pendingFees',
+                            args: [
+                                address as `0x${string}`,
+                                {
+                                    currency0: MUSDC as `0x${string}`,
+                                    currency1: MWETH as `0x${string}`,
+                                    fee: tradPool.fee,
+                                    tickSpacing: tradPool.tickSpacing,
+                                    hooks: tradPool.hook,
+                                },
+                            ],
+                        }) as [bigint, bigint]
+                        fees0 = feesResult[0]
+                        fees1 = feesResult[1]
+                    } catch {}
+                    positions.push({ poolName: tradPool.label, amount, hook: tradPool.hook, fees0, fees1 })
                 }
             }
 
             return positions
         },
         enabled: !!address && !!publicClient,
-        refetchInterval: 15000,
+        refetchInterval: 10000,
     })
 
     const activePositions = poolPositions ?? []
@@ -320,6 +409,37 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                         )
                     })}
                 </div>
+
+                {/* Fees Earned per Pool */}
+                {activePositions.length > 0 && (
+                    <div className="mt-6 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                        <h4 className="text-sm font-semibold text-emerald-400 mb-3">Fees Earned by Pool</h4>
+                        <div className="space-y-2">
+                            {activePositions.map((pos) => {
+                                const fees0Num = Number(formatUnits(pos.fees0, 18))
+                                const fees1Num = Number(formatUnits(pos.fees1, 18))
+                                const isAqua = AQUA_POOLS.some(p => p.hook.toLowerCase() === pos.hook.toLowerCase())
+                                return (
+                                    <div key={pos.hook} className="flex items-center justify-between text-sm font-mono">
+                                        <span className={isAqua ? 'text-emerald-400' : 'text-orange-400'}>
+                                            {pos.poolName} {isAqua ? '(Aqua)' : '(Traditional)'}
+                                        </span>
+                                        <span className="text-foreground">
+                                            {fees0Num.toFixed(6)} mUSDC / {fees1Num.toFixed(6)} mWETH
+                                        </span>
+                                    </div>
+                                )
+                            })}
+                            {/* Total */}
+                            <div className="border-t border-emerald-500/20 pt-2 mt-2 flex items-center justify-between text-sm font-mono font-semibold">
+                                <span className="text-emerald-300">TOTAL</span>
+                                <span className="text-emerald-300">
+                                    {Number(formatUnits(activePositions.reduce((sum, p) => sum + p.fees0, 0n), 18)).toFixed(6)} mUSDC / {Number(formatUnits(activePositions.reduce((sum, p) => sum + p.fees1, 0n), 18)).toFixed(6)} mWETH
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </CardContent>
 
             <Dialog open={actionDialog?.isOpen} onOpenChange={(open) => !open && setActionDialog(null)}>
