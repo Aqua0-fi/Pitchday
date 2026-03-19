@@ -14,6 +14,9 @@ import { isTranchesHook, isTraditionalHook, TRANCHES_SHARED_POOL, TRANCHES_POOLS
 import { useReadContracts, useReadContract } from 'wagmi'
 import { formatUnits } from 'viem'
 import { RSCOracleSimulator } from '@/components/pools/rsc-oracle-simulator'
+import { useTranchesPosition } from '@/hooks/use-tranches-position'
+import { useTranchesRemove } from '@/hooks/use-tranches-remove'
+import { ArrowUpFromLine, Loader2 as Loader2Icon } from 'lucide-react'
 // no recharts needed
 
 function fmt(val: bigint, decimals = 18, dp = 4): string {
@@ -165,6 +168,11 @@ export default function PoolDetailPage() {
                 </div>
             </div>
 
+            {/* User Position & Withdraw */}
+            {isConnected && (
+                <PoolPosition hookAddress={pool.poolKey.hooks as `0x${string}`} />
+            )}
+
             {isProvideModalOpen && (
                 <TranchesLiquidityModal
                     open={isProvideModalOpen}
@@ -292,6 +300,82 @@ function PoolStatsWithChart({ pool, sharedPoolAddr, isAqua }: { pool: any; share
                             </div>
                         </div>
                     </div>
+                )}
+            </div>
+        </div>
+    )
+}
+
+// ─── Position & Withdraw ──────────────────────────────────────────────────────
+
+function PoolPosition({ hookAddress }: { hookAddress: `0x${string}` }) {
+    const { position, hasPosition, isLoading } = useTranchesPosition(hookAddress)
+    const remove = useTranchesRemove(hookAddress)
+
+    if (isLoading) return <div className="text-sm text-muted-foreground p-4">Loading position...</div>
+    if (!hasPosition || !position) return null
+
+    const trancheLabel = position.tranche === 0 ? 'Senior' : 'Junior'
+    const pending0 = position.pendingFees.token0
+    const pending1 = position.pendingFees.token1
+    const claimable0 = position.claimable.token0
+    const claimable1 = position.claimable.token1
+
+    const handleRemove = () => {
+        remove.execute({
+            tickLower: -120,
+            tickUpper: 120,
+            amount0Initial: position.amount,
+            amount1Initial: position.amount,
+        })
+    }
+
+    return (
+        <div className="rounded-xl border border-border/50 bg-secondary/20 p-6 mt-6">
+            <h3 className="text-lg font-semibold mb-4">Your Position</h3>
+            <div className="flex flex-wrap gap-6 text-sm mb-4">
+                <div>
+                    <span className="text-muted-foreground block mb-1">Tranche</span>
+                    <span className={`font-semibold ${position.tranche === 0 ? 'text-blue-400' : 'text-amber-400'}`}>{trancheLabel}</span>
+                </div>
+                <div>
+                    <span className="text-muted-foreground block mb-1">Liquidity</span>
+                    <span className="font-mono font-semibold">{Number(formatUnits(position.amount, 18)).toFixed(4)}</span>
+                </div>
+                <div>
+                    <span className="text-muted-foreground block mb-1">Pending Fees</span>
+                    <span className="font-mono text-emerald-400">
+                        {Number(formatUnits(pending0, 18)).toFixed(4)} mUSDC / {Number(formatUnits(pending1, 18)).toFixed(4)} mWETH
+                    </span>
+                </div>
+                <div>
+                    <span className="text-muted-foreground block mb-1">Claimable</span>
+                    <span className="font-mono text-amber-400">
+                        {Number(formatUnits(claimable0, 18)).toFixed(4)} mUSDC / {Number(formatUnits(claimable1, 18)).toFixed(4)} mWETH
+                    </span>
+                </div>
+            </div>
+            <div className="flex gap-2">
+                {remove.step === 'done' ? (
+                    <Button onClick={remove.reset} variant="outline" size="sm" className="gap-2">
+                        Withdrawn!
+                    </Button>
+                ) : remove.step === 'error' ? (
+                    <Button onClick={remove.reset} variant="outline" size="sm" className="gap-2 text-red-400">
+                        Failed — Retry
+                    </Button>
+                ) : (
+                    <Button
+                        onClick={handleRemove}
+                        disabled={remove.step !== 'idle'}
+                        size="sm"
+                        variant="outline"
+                        className="gap-2 text-red-400 hover:text-red-300 hover:border-red-500/30"
+                    >
+                        {remove.step !== 'idle' && <Loader2Icon className="h-4 w-4 animate-spin" />}
+                        <ArrowUpFromLine className="h-4 w-4" />
+                        Withdraw Position
+                    </Button>
                 )}
             </div>
         </div>

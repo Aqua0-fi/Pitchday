@@ -4,11 +4,18 @@ import {
   TRANCHES_ROUTER,
   TRANCHES_ROUTER_ABI,
   TRANCHES_POOL_KEY,
+  TRANCHES_POOLS,
 } from '@/lib/contracts'
+import type { Address } from 'viem'
 
 type RemoveStep = 'idle' | 'removing' | 'confirming' | 'done' | 'error'
 
-export function useTranchesRemove() {
+export function useTranchesRemove(hookAddress?: Address) {
+  const poolConfig = hookAddress
+    ? TRANCHES_POOLS.find(p => p.hook.toLowerCase() === hookAddress.toLowerCase())
+    : undefined
+  const router = poolConfig?.router ?? TRANCHES_ROUTER
+
   const [step, setStep] = useState<RemoveStep>('idle')
   const [error, setError] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>()
@@ -29,14 +36,21 @@ export function useTranchesRemove() {
     setError(null)
     const { tickLower = -120, tickUpper = 120, amount0Initial, amount1Initial } = params
 
+    const poolKey = {
+      ...TRANCHES_POOL_KEY,
+      fee: poolConfig?.fee ?? TRANCHES_POOL_KEY.fee,
+      tickSpacing: poolConfig?.tickSpacing ?? TRANCHES_POOL_KEY.tickSpacing,
+      hooks: (hookAddress ?? TRANCHES_POOL_KEY.hooks) as Address,
+    }
+
     try {
       setStep('removing')
       const hash = await writeContractAsync({
-        address: TRANCHES_ROUTER,
+        address: router as Address,
         abi: TRANCHES_ROUTER_ABI,
         functionName: 'removeLiquidity',
         args: [
-          TRANCHES_POOL_KEY,
+          poolKey,
           tickLower,
           tickUpper,
           amount0Initial,
@@ -50,7 +64,7 @@ export function useTranchesRemove() {
       setStep('error')
       setError(err instanceof Error ? err.message : 'Removal failed')
     }
-  }, [writeContractAsync])
+  }, [writeContractAsync, hookAddress, router, poolConfig])
 
   const reset = useCallback(() => {
     setStep('idle')

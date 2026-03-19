@@ -5,12 +5,12 @@ import {
   TRANCHES_HOOK,
   TRANCHES_HOOK_ABI,
   TRANCHES_POOL_KEY,
+  TRANCHES_POOLS,
 } from '@/lib/contracts'
+import type { Address } from 'viem'
 
-// Matches Solidity: keccak256(abi.encodePacked(lp, PoolId.unwrap(poolId)))
-// PoolId = keccak256(abi.encode(PoolKey)) — standard ABI encoding, NOT packed
-function computePoolId(): `0x${string}` {
-  const { currency0, currency1, fee, tickSpacing, hooks } = TRANCHES_POOL_KEY
+function computePoolId(hookAddress: Address, fee?: number, tickSpacing?: number): `0x${string}` {
+  const poolConfig = TRANCHES_POOLS.find(p => p.hook.toLowerCase() === hookAddress.toLowerCase())
   return keccak256(
     encodeAbiParameters(
       [
@@ -20,23 +20,30 @@ function computePoolId(): `0x${string}` {
         { type: 'int24' },
         { type: 'address' },
       ],
-      [currency0, currency1, fee, tickSpacing, hooks]
+      [
+        TRANCHES_POOL_KEY.currency0,
+        TRANCHES_POOL_KEY.currency1,
+        fee ?? poolConfig?.fee ?? TRANCHES_POOL_KEY.fee,
+        tickSpacing ?? poolConfig?.tickSpacing ?? TRANCHES_POOL_KEY.tickSpacing,
+        hookAddress,
+      ]
     )
   )
 }
 
-function computePositionKey(lp: `0x${string}`): `0x${string}` {
-  const poolId = computePoolId()
+function computePositionKey(lp: `0x${string}`, hookAddress: Address): `0x${string}` {
+  const poolId = computePoolId(hookAddress)
   return keccak256(encodePacked(['address', 'bytes32'], [lp, poolId]))
 }
 
-export function useTranchesPosition() {
+export function useTranchesPosition(hookAddress?: Address) {
+  const hook = hookAddress ?? TRANCHES_HOOK
   const { address } = useWallet()
-  const posKey = address ? computePositionKey(address as `0x${string}`) : undefined
+  const posKey = address ? computePositionKey(address as `0x${string}`, hook) : undefined
 
   // Read position data
   const { data: posData, isLoading: posLoading } = useReadContract({
-    address: TRANCHES_HOOK,
+    address: hook,
     abi: TRANCHES_HOOK_ABI,
     functionName: 'positions',
     args: posKey ? [posKey] : undefined,
@@ -44,25 +51,33 @@ export function useTranchesPosition() {
   })
 
   // Read pending fees
+  const poolConfig = TRANCHES_POOLS.find(p => p.hook.toLowerCase() === hook.toLowerCase())
+  const poolKey = {
+    ...TRANCHES_POOL_KEY,
+    fee: poolConfig?.fee ?? TRANCHES_POOL_KEY.fee,
+    tickSpacing: poolConfig?.tickSpacing ?? TRANCHES_POOL_KEY.tickSpacing,
+    hooks: hook,
+  }
+
   const { data: feesData, isLoading: feesLoading } = useReadContract({
-    address: TRANCHES_HOOK,
+    address: hook,
     abi: TRANCHES_HOOK_ABI,
     functionName: 'pendingFees',
-    args: address ? [address as `0x${string}`, TRANCHES_POOL_KEY] : undefined,
+    args: address ? [address as `0x${string}`, poolKey] : undefined,
     query: { enabled: !!address, refetchInterval: 10_000 },
   })
 
-  // Read claimable balances (currency0 and currency1)
+  // Read claimable balances
   const { data: claimableResults, isLoading: claimLoading } = useReadContracts({
     contracts: address ? [
       {
-        address: TRANCHES_HOOK,
+        address: hook,
         abi: TRANCHES_HOOK_ABI,
         functionName: 'claimableBalance',
         args: [address as `0x${string}`, TRANCHES_POOL_KEY.currency0],
       },
       {
-        address: TRANCHES_HOOK,
+        address: hook,
         abi: TRANCHES_HOOK_ABI,
         functionName: 'claimableBalance',
         args: [address as `0x${string}`, TRANCHES_POOL_KEY.currency1],
@@ -86,7 +101,7 @@ export function useTranchesPosition() {
 
   return {
     position: {
-      tranche: tranche as 0 | 1, // 0 = Senior, 1 = Junior
+      tranche: tranche as 0 | 1,
       amount,
       depositBlock,
       depositSqrtPriceX96,
