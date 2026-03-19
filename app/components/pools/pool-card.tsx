@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { TokenPairIcon } from '@/components/token-icon'
 import type { V4Pool } from '@/lib/v4-api'
 import { ArrowUpRight, TrendingUp, ShieldCheck } from 'lucide-react'
-import { isTranchesHook } from '@/lib/contracts'
+import { isTranchesHook, isTraditionalHook } from '@/lib/contracts'
 
 interface PoolCardProps {
     pool: V4Pool
@@ -60,6 +60,16 @@ export function PoolCard({ pool }: PoolCardProps) {
                                 <span className="inline-flex items-center gap-1 mt-0.5 ml-1 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider rounded-full bg-blue-500/10 text-blue-400">
                                     <ShieldCheck className="h-2.5 w-2.5" />
                                     TrancheFi
+                                </span>
+                            )}
+                            {isTraditionalHook(pool.poolKey.hooks) && (
+                                <span className="inline-flex items-center gap-1 mt-0.5 ml-1 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider rounded-full bg-red-500/10 text-red-400">
+                                    No Aqua
+                                </span>
+                            )}
+                            {isTranchesHook(pool.poolKey.hooks) && !isTraditionalHook(pool.poolKey.hooks) && (
+                                <span className="inline-flex items-center gap-1 mt-0.5 ml-1 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider rounded-full bg-emerald-500/10 text-emerald-400">
+                                    Shared Liquidity
                                 </span>
                             )}
                         </div>

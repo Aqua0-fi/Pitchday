@@ -4,22 +4,40 @@ import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { TokenPairIcon } from '@/components/token-icon'
 import { LoadingSpinner } from '@/components/loading-spinner'
 import { useV4Pools } from '@/hooks/use-v4-pools'
-import { ArrowLeft, TrendingUp, Info, ExternalLink } from 'lucide-react'
+import { ArrowLeft, TrendingUp, Info, ExternalLink, ArrowDownUp, Loader2, Droplets } from 'lucide-react'
 import { useWallet } from '@/contexts/wallet-context'
-import { ProvideLiquidityModal } from '@/components/pools/provide-liquidity-modal'
 import { TranchesLiquidityModal } from '@/components/pools/tranches-liquidity-modal'
-import { TrancheStats, TranchePosition } from '@/components/pools/tranches-panel'
-import { VisualLiquidityChart } from '@/components/pools/visual-liquidity-chart'
+import { isTranchesHook, isTraditionalHook, TRANCHES_SHARED_POOL, TRANCHES_POOLS, TRANCHES_POOL_KEY, ERC20_ABI } from '@/lib/contracts'
+import { useTranchesStats } from '@/hooks/use-tranches-stats'
+import { useReadContracts, useAccount } from 'wagmi'
+import { formatUnits } from 'viem'
 import { RSCOracleSimulator } from '@/components/pools/rsc-oracle-simulator'
-import { isTranchesHook } from '@/lib/contracts'
 
-function formatNumber(value: number): string {
-    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`
-    if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
-    return value.toFixed(2)
+function fmt(val: bigint, decimals = 18, dp = 4): string {
+    const str = formatUnits(val, decimals)
+    const num = parseFloat(str)
+    if (num === 0) return '0'
+    if (num < 0.0001) return '<0.0001'
+    return num.toLocaleString(undefined, { maximumFractionDigits: dp })
+}
+
+function usePoolTokenBalances(poolAddress: string | undefined) {
+    const { data, isLoading } = useReadContracts({
+        contracts: poolAddress ? [
+            { address: TRANCHES_POOL_KEY.currency0, abi: ERC20_ABI, functionName: 'balanceOf', args: [poolAddress as `0x${string}`] },
+            { address: TRANCHES_POOL_KEY.currency1, abi: ERC20_ABI, functionName: 'balanceOf', args: [poolAddress as `0x${string}`] },
+        ] : [],
+        query: { enabled: !!poolAddress, refetchInterval: 10_000 },
+    })
+    return {
+        mUSDC: (data?.[0]?.result as bigint) ?? 0n,
+        mWETH: (data?.[1]?.result as bigint) ?? 0n,
+        isLoading,
+    }
 }
 
 export default function PoolDetailPage() {
@@ -55,16 +73,27 @@ export default function PoolDetailPage() {
     }
 
     const getLogo = (symbol: string) => {
-        const cleanSymbol = symbol.replace(/^m/, '');
-        if (cleanSymbol === 'WBTC') return '/crypto/BTC.png';
-        if (cleanSymbol === 'WETH') return '/crypto/ETH.png';
-        return `/crypto/${cleanSymbol}.png`;
-    };
+        const cleanSymbol = symbol.replace(/^m/, '')
+        if (cleanSymbol === 'WBTC') return '/crypto/BTC.png'
+        if (cleanSymbol === 'WETH') return '/crypto/ETH.png'
+        return `/crypto/${cleanSymbol}.png`
+    }
 
     const tokenPair = [
         { ...pool.token0, logo: getLogo(pool.token0.symbol) },
         { ...pool.token1, logo: getLogo(pool.token1.symbol) },
     ]
+
+    const isAqua = isTranchesHook(pool.poolKey.hooks) && !isTraditionalHook(pool.poolKey.hooks)
+    const isTraditional = isTraditionalHook(pool.poolKey.hooks)
+
+    // Determine which SharedPool to read balances from
+    const poolConfig = TRANCHES_POOLS.find(
+        (p) => p.hook.toLowerCase() === pool.poolKey.hooks.toLowerCase()
+    )
+    const sharedPoolAddr = isTraditional && poolConfig && 'isolatedPool' in poolConfig
+        ? (poolConfig as any).isolatedPool
+        : TRANCHES_SHARED_POOL
 
     return (
         <div className="container mx-auto px-4 py-8 max-w-5xl">
@@ -76,7 +105,7 @@ export default function PoolDetailPage() {
                 Back to Pools
             </Link>
 
-            {/* Header Section */}
+            {/* Header */}
             <div className="mb-8 flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex items-center gap-4">
                     <TokenPairIcon tokens={tokenPair as any} size="lg" />
@@ -84,14 +113,21 @@ export default function PoolDetailPage() {
                         <div className="flex flex-wrap items-center gap-2">
                             <h1 className="text-2xl font-bold">{pool.token0.symbol}/{pool.token1.symbol}</h1>
                             <span className="px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider rounded-full bg-violet-500/10 text-violet-400">
-                                Aqua0 Hook
+                                {(pool.fee / 10000).toFixed(2)}% Fee
                             </span>
-                            <span className="px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider rounded-full bg-white/5 text-muted-foreground">
-                                Chain {activeChainId}
-                            </span>
+                            {isAqua && (
+                                <span className="px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider rounded-full bg-emerald-500/10 text-emerald-400">
+                                    Aqua0 Shared
+                                </span>
+                            )}
+                            {isTraditional && (
+                                <span className="px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider rounded-full bg-red-500/10 text-red-400">
+                                    Traditional LP
+                                </span>
+                            )}
                         </div>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            Swap Fee: {pool.fee / 10000}% • Tick Spacing: {pool.tickSpacing}
+                            Tick Spacing: {pool.tickSpacing} • Chain {activeChainId}
                         </p>
                     </div>
                 </div>
@@ -99,117 +135,184 @@ export default function PoolDetailPage() {
                     {isTranchesHook(pool.poolKey.hooks) && (
                         <RSCOracleSimulator currentPrice={pool.currentPrice} />
                     )}
-                    <div className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1.5">
-                        <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
-                        <span className="text-sm font-bold text-emerald-400">Just-in-Time Active</span>
-                    </div>
                     <Button size="lg" className="gap-2" onClick={() => setIsProvideModalOpen(true)}>
+                        <Droplets className="h-4 w-4" />
                         Provide Liquidity
                     </Button>
                 </div>
             </div>
 
-            {/* Key Metrics Row */}
-            <div className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-4">
-                <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
-                    <div className="flex items-center gap-1.5 group relative">
-                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">ETH Price</p>
-                        <div className="relative">
-                            <Info className="h-3 w-3 text-muted-foreground/50 cursor-help peer" />
-                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-52 p-2.5 rounded-lg bg-zinc-900 border border-border/50 shadow-xl z-50 opacity-0 pointer-events-none peer-hover:opacity-100 transition-opacity duration-150">
-                                <p className="text-[11px] text-zinc-300 leading-relaxed">Current ETH price in the pool, denominated in USDC. Derived from the active tick in the Uniswap V4 PoolManager.</p>
-                                <div className="absolute left-1/2 -translate-x-1/2 top-full w-2 h-2 bg-zinc-900 border-r border-b border-border/50 rotate-45 -mt-1" />
-                            </div>
-                        </div>
-                    </div>
-                    <p className="mt-1.5 text-2xl font-bold tabular-nums">{pool.currentPrice.toPrecision(5)}</p>
-                </div>
-                <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
-                    <div className="flex items-center gap-1.5">
-                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Current Tick</p>
-                        <div className="relative">
-                            <Info className="h-3 w-3 text-muted-foreground/50 cursor-help peer" />
-                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-52 p-2.5 rounded-lg bg-zinc-900 border border-border/50 shadow-xl z-50 opacity-0 pointer-events-none peer-hover:opacity-100 transition-opacity duration-150">
-                                <p className="text-[11px] text-zinc-300 leading-relaxed">Logarithmic representation of price in Uniswap V4. Price = 1.0001^tick. Each tick is a 0.01% (1 bip) price increment.</p>
-                                <div className="absolute left-1/2 -translate-x-1/2 top-full w-2 h-2 bg-zinc-900 border-r border-b border-border/50 rotate-45 -mt-1" />
-                            </div>
-                        </div>
-                    </div>
-                    <p className="mt-1.5 text-2xl font-bold tabular-nums">{pool.currentTick}</p>
-                </div>
-                <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Pool ID</p>
-                    <a
-                        href={`https://sepolia.uniscan.xyz/tx/${pool.poolId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-3 flex items-center gap-1.5 text-sm font-medium tabular-nums truncate text-white/80 hover:text-white transition-colors"
-                    >
-                        <span className="truncate">{pool.poolId}</span>
-                        <ExternalLink className="h-3 w-3 shrink-0" />
-                    </a>
-                </div>
-                <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Hook Address</p>
-                    <a
-                        href={`https://sepolia.uniscan.xyz/address/${pool.poolKey.hooks}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-3 flex items-center gap-1.5 text-sm font-medium tabular-nums truncate text-white/80 hover:text-white transition-colors"
-                    >
-                        <span className="truncate">{pool.poolKey.hooks}</span>
-                        <ExternalLink className="h-3 w-3 shrink-0" />
-                    </a>
-                </div>
+            {/* Pool Stats */}
+            <PoolStats pool={pool} sharedPoolAddr={sharedPoolAddr} isAqua={isAqua} />
+
+            {/* Swap UI */}
+            <div className="mb-8">
+                <h2 className="text-xl font-bold mb-4">Swap</h2>
+                <PoolSwapUI pool={pool} poolConfig={poolConfig} />
             </div>
 
-            {/* Virtual Liquidity Chart — show Tranches distribution for TranchesHook pools */}
-            {isTranchesHook(pool.poolKey.hooks) ? (
-                <div className="mb-8 space-y-6">
-                    <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-1.5 rounded-full bg-violet-500/10 px-3 py-1.5">
-                            <span className="text-sm font-bold text-violet-400">TrancheFi</span>
-                        </div>
-                        <h2 className="text-xl font-bold">Tranche Stats</h2>
-                    </div>
-                    <TrancheStats />
-                    <TranchePosition />
-                </div>
-            ) : (
-                <div className="mb-8">
-                    <h2 className="text-xl font-bold mb-4">Virtual Liquidity Distribution</h2>
-                    <VisualLiquidityChart pool={pool} />
-                </div>
-            )}
-
+            {/* How it works */}
             <div className="rounded-xl border border-border/50 bg-secondary/20 p-6 flex items-start gap-4">
-                <Info className="h-6 w-6 text-emerald-400 mt-0.5" />
+                <Info className="h-6 w-6 text-emerald-400 mt-0.5 shrink-0" />
                 <div>
-                    <h3 className="text-lg font-semibold mb-2 text-emerald-400">How Aqua0 Shared Liquidity Works</h3>
-                    <ul className="space-y-2 text-sm text-foreground/80 list-disc list-inside">
-                        <li>Your pooled tokens are <strong>not</strong> sent directly to the V4 PoolManager. They are held safely in the <code>SharedLiquidityPool</code> contract.</li>
-                        <li>During a swap on this pool, the Aqua0 Hook uses flash accounting to virtually inject your liquidity right before the swap (<code>beforeSwap</code>).</li>
-                        <li>After the swap executes against your liquidity, the hook removes the virtual position (<code>afterSwap</code>).</li>
-                        <li>Only the <strong>net</strong> tokens required to settle the trade actually move, saving immense gas and allowing cross-pool sharing.</li>
-                    </ul>
+                    {isAqua ? (
+                        <>
+                            <h3 className="text-lg font-semibold mb-2 text-emerald-400">Aqua0 Shared Liquidity</h3>
+                            <p className="text-sm text-foreground/80">
+                                This pool shares liquidity with other Aqua0 pools. Your deposit earns fees from swaps across ALL shared pools simultaneously — not just this one. Capital efficiency is maximized through just-in-time virtual positions.
+                            </p>
+                        </>
+                    ) : (
+                        <>
+                            <h3 className="text-lg font-semibold mb-2 text-red-400">Traditional LP (Isolated)</h3>
+                            <p className="text-sm text-foreground/80">
+                                This pool has its own isolated liquidity. Your deposit only earns fees from swaps in this specific pool. Capital is locked here and cannot be shared with other pools.
+                            </p>
+                        </>
+                    )}
                 </div>
             </div>
 
             {isProvideModalOpen && (
-                isTranchesHook(pool.poolKey.hooks) ? (
-                    <TranchesLiquidityModal
-                        open={isProvideModalOpen}
-                        onOpenChange={setIsProvideModalOpen}
-                        poolPrice={pool.currentPrice}
-                    />
-                ) : (
-                    <ProvideLiquidityModal
-                        open={isProvideModalOpen}
-                        onOpenChange={setIsProvideModalOpen}
-                        pool={pool}
-                    />
-                )
+                <TranchesLiquidityModal
+                    open={isProvideModalOpen}
+                    onOpenChange={setIsProvideModalOpen}
+                    poolPrice={pool.currentPrice}
+                />
             )}
+        </div>
+    )
+}
+
+// ─── Pool Stats Component ─────────────────────────────────────────────────────
+
+function PoolStats({ pool, sharedPoolAddr, isAqua }: { pool: any; sharedPoolAddr: string; isAqua: boolean }) {
+    const { mUSDC, mWETH, isLoading } = usePoolTokenBalances(sharedPoolAddr)
+
+    return (
+        <div className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total mWETH</p>
+                <p className="mt-1.5 text-2xl font-bold tabular-nums">
+                    {isLoading ? '...' : fmt(mWETH)}
+                </p>
+            </div>
+            <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total mUSDC</p>
+                <p className="mt-1.5 text-2xl font-bold tabular-nums">
+                    {isLoading ? '...' : fmt(mUSDC)}
+                </p>
+            </div>
+            <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Swap Fee</p>
+                <p className="mt-1.5 text-2xl font-bold tabular-nums text-emerald-400">
+                    {(pool.fee / 10000).toFixed(2)}%
+                </p>
+            </div>
+            <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Liquidity Type</p>
+                <p className={`mt-1.5 text-lg font-bold ${isAqua ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {isAqua ? 'Shared (Aqua0)' : 'Isolated'}
+                </p>
+            </div>
+        </div>
+    )
+}
+
+// ─── Swap UI Component ────────────────────────────────────────────────────────
+
+function PoolSwapUI({ pool, poolConfig }: { pool: any; poolConfig: any }) {
+    const { address } = useAccount()
+    const [direction, setDirection] = useState<'buy' | 'sell'>('buy')
+    const [amount, setAmount] = useState('')
+    const [isSwapping, setIsSwapping] = useState(false)
+
+    const inputToken = direction === 'buy' ? 'mUSDC' : 'mWETH'
+    const outputToken = direction === 'buy' ? 'mWETH' : 'mUSDC'
+
+    // Simple estimated output (1:1 pool price for demo)
+    const poolPrice = pool.currentPrice > 0 ? pool.currentPrice : 1
+    const estimatedOutput = amount
+        ? direction === 'buy'
+            ? (parseFloat(amount) * poolPrice).toFixed(4)
+            : (parseFloat(amount) / poolPrice).toFixed(4)
+        : '0'
+
+    return (
+        <div className="max-w-md">
+            <div className="rounded-xl border border-border/50 bg-secondary/20 p-5 space-y-4">
+                {/* Direction toggle */}
+                <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">{inputToken} → {outputToken}</span>
+                    <button
+                        onClick={() => setDirection(d => d === 'buy' ? 'sell' : 'buy')}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04] hover:bg-white/[0.08] transition-colors"
+                    >
+                        <ArrowDownUp className="h-3.5 w-3.5 text-muted-foreground" />
+                    </button>
+                </div>
+
+                {/* Input */}
+                <div className="rounded-lg bg-white/[0.03] p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">You pay</p>
+                    <div className="flex items-center gap-3">
+                        <Input
+                            type="number"
+                            placeholder="0.0"
+                            value={amount}
+                            onChange={(e) => setAmount(e.target.value)}
+                            className="border-0 bg-transparent text-xl font-bold shadow-none focus-visible:ring-0 p-0 h-auto"
+                            min="0"
+                        />
+                        <span className="shrink-0 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs font-bold text-muted-foreground">
+                            {inputToken}
+                        </span>
+                    </div>
+                </div>
+
+                {/* Arrow */}
+                <div className="flex justify-center">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/50 bg-secondary/20">
+                        <ArrowDownUp className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
+                </div>
+
+                {/* Output */}
+                <div className="rounded-lg bg-white/[0.03] p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">You receive (est.)</p>
+                    <div className="flex items-center gap-3">
+                        <p className="flex-1 text-xl font-bold text-muted-foreground">{estimatedOutput}</p>
+                        <span className="shrink-0 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs font-bold text-muted-foreground">
+                            {outputToken}
+                        </span>
+                    </div>
+                </div>
+
+                {/* Rate */}
+                <div className="rounded-lg bg-white/[0.02] px-3 py-2 text-center">
+                    <p className="text-xs text-muted-foreground">
+                        1 mWETH ≈ <span className="text-foreground/80 font-mono">{poolPrice.toFixed(2)}</span> mUSDC
+                    </p>
+                </div>
+
+                {/* Swap button */}
+                <Button
+                    disabled={!amount || parseFloat(amount) <= 0 || isSwapping || !address}
+                    className="w-full gap-2"
+                    size="lg"
+                >
+                    {isSwapping ? (
+                        <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Swapping...
+                        </>
+                    ) : !address ? (
+                        'Connect Wallet'
+                    ) : (
+                        'Swap'
+                    )}
+                </Button>
+            </div>
         </div>
     )
 }

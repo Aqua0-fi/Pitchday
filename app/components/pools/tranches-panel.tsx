@@ -218,7 +218,7 @@ export function TrancheStats() {
 
 export function TrancheDeposit({ poolPrice = 2000 }: { poolPrice?: number }) {
   const { address } = useWallet()
-  const [selectedTranche, setSelectedTranche] = useState<0 | 1>(0)
+  const selectedTranche = 1 // Always deposit as Junior for demo simplicity
   const [amount0, setAmount0] = useState('')
   const [amount1, setAmount1] = useState('')
   const [lastEdited, setLastEdited] = useState<'amount0' | 'amount1' | null>(null)
@@ -265,7 +265,7 @@ export function TrancheDeposit({ poolPrice = 2000 }: { poolPrice?: number }) {
     idle: '',
     approving0: 'Approving mUSDC...',
     approving1: 'Approving mWETH...',
-    depositing: 'Depositing into tranche...',
+    depositing: 'Depositing liquidity...',
     confirming: 'Confirming transaction...',
     done: 'Deposit successful!',
     error: deposit.error || 'Error',
@@ -273,52 +273,13 @@ export function TrancheDeposit({ poolPrice = 2000 }: { poolPrice?: number }) {
 
   return (
     <div className="space-y-4">
-      {/* Tranche selector */}
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          onClick={() => setSelectedTranche(0)}
-          className={`rounded-xl border-2 p-4 text-left transition-all ${
-            selectedTranche === 0
-              ? 'border-blue-500 bg-blue-500/10'
-              : 'border-border/50 bg-secondary/20 hover:border-blue-500/30'
-          }`}
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <ShieldCheck className="h-4 w-4 text-blue-400" />
-            <span className="font-bold text-blue-400">Senior</span>
-            <div className="relative ml-auto" onClick={(e) => e.stopPropagation()}>
-              <Info className="h-3.5 w-3.5 text-blue-400/50 hover:text-blue-400 transition-colors cursor-help peer" />
-              <div className="absolute right-0 bottom-full mb-2 w-56 p-3 rounded-lg bg-zinc-900 border border-blue-500/30 shadow-xl z-50 opacity-0 pointer-events-none peer-hover:opacity-100 transition-opacity duration-150">
-                <p className="text-[11px] text-zinc-300 leading-relaxed">
-                  <span className="text-blue-400 font-medium">Senior tranche</span> gets paid first from swap fees up to a target APY. Any impermanent loss is compensated from the IL reserve funded by Junior. Ideal for conservative LPs who want predictable yield.
-                </p>
-              </div>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground">Priority fees, IL protection, lower risk</p>
-        </button>
-        <button
-          onClick={() => setSelectedTranche(1)}
-          className={`rounded-xl border-2 p-4 text-left transition-all ${
-            selectedTranche === 1
-              ? 'border-orange-500 bg-orange-500/10'
-              : 'border-border/50 bg-secondary/20 hover:border-orange-500/30'
-          }`}
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <Flame className="h-4 w-4 text-orange-400" />
-            <span className="font-bold text-orange-400">Junior</span>
-            <div className="relative ml-auto" onClick={(e) => e.stopPropagation()}>
-              <Info className="h-3.5 w-3.5 text-orange-400/50 hover:text-orange-400 transition-colors cursor-help peer" />
-              <div className="absolute right-0 bottom-full mb-2 w-56 p-3 rounded-lg bg-zinc-900 border border-orange-500/30 shadow-xl z-50 opacity-0 pointer-events-none peer-hover:opacity-100 transition-opacity duration-150">
-                <p className="text-[11px] text-zinc-300 leading-relaxed">
-                  <span className="text-orange-400 font-medium">Junior tranche</span> earns all remaining fees after Senior is paid, plus absorbs impermanent loss. A portion of Junior fees funds the IL reserve. Higher risk but potentially much higher returns in low-volatility conditions.
-                </p>
-              </div>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground">Higher yield, absorbs IL, higher risk</p>
-        </button>
+      {/* Deposit header */}
+      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+        <div className="flex items-center gap-2">
+          <Wallet className="h-5 w-5 text-emerald-400" />
+          <span className="font-bold text-emerald-400">Deposit Liquidity</span>
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">Provide mUSDC + mWETH to earn swap fees from this pool</p>
       </div>
 
       {/* Amount inputs */}
@@ -392,7 +353,7 @@ export function TrancheDeposit({ poolPrice = 2000 }: { poolPrice?: number }) {
         >
           {isProcessing && <Loader2 className="h-4 w-4 animate-spin" />}
           {deposit.step === 'idle'
-            ? `Deposit into ${selectedTranche === 0 ? 'Senior' : 'Junior'}`
+            ? 'Deposit Liquidity'
             : stepLabel[deposit.step]}
         </Button>
       )}
@@ -421,9 +382,8 @@ export function TranchePosition() {
     )
   }
 
-  const isSenior = position.tranche === 0
-  const trancheLabel = isSenior ? 'Senior' : 'Junior'
-  const TrancheIcon = isSenior ? ShieldCheck : Flame
+  const trancheLabel = 'Your'
+  const TrancheIcon = Wallet
 
   const hasPending = position.pendingFees.token0 > 0n || position.pendingFees.token1 > 0n
   const hasClaimable = position.claimable.token0 > 0n || position.claimable.token1 > 0n
@@ -456,18 +416,12 @@ export function TranchePosition() {
   }
 
   return (
-    <div className={`rounded-xl border ${isSenior ? 'border-blue-500/20 bg-blue-500/5' : 'border-orange-500/20 bg-orange-500/5'} p-5 space-y-4`}>
+    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-5 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <TrancheIcon className={`h-5 w-5 ${isSenior ? 'text-blue-400' : 'text-orange-400'}`} />
-          <span className={`font-bold ${isSenior ? 'text-blue-400' : 'text-orange-400'}`}>{trancheLabel} Position</span>
-          {isSenior && (
-            <span className="flex items-center gap-1 text-[10px] rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-400">
-              <Shield className="h-3 w-3" />
-              IL Protected
-            </span>
-          )}
+          <TrancheIcon className="h-5 w-5 text-emerald-400" />
+          <span className="font-bold text-emerald-400">{trancheLabel} Position</span>
         </div>
         <span className="text-xs text-muted-foreground">Block #{position.depositBlock.toString()}</span>
       </div>
