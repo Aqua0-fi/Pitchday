@@ -168,8 +168,8 @@ export default function PoolDetailPage() {
                 </div>
             </div>
 
-            {/* User Position & Withdraw */}
-            {isConnected && (
+            {/* User Position & Withdraw (Traditional pool only) */}
+            {isTraditional && (
                 <PoolPosition hookAddress={pool.poolKey.hooks as `0x${string}`} />
             )}
 
