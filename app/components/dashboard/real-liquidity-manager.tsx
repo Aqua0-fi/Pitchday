@@ -22,6 +22,9 @@ const AQUA_POOLS = TRANCHES_POOLS.filter(p => p.aqua)
 const MUSDC = '0x73c56ddD816e356387Caf740c804bb9D379BE47E'
 const MWETH = '0x7fF28651365c735c22960E27C2aFA97AbE4Cf2Ad'
 
+// 1 mWETH = 2000 mUSDC
+const ETH_PRICE_USD = 2000
+
 // ABI to read user position from TranchesHook
 const HOOK_POSITION_ABI = [
   {
@@ -97,23 +100,20 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
 
     const { data: balances, isLoading, refetch } = useSharedBalances(chainId, address || undefined, tokenAddresses)
 
-    // Read user positions from each Aqua pool to compute virtual capital
-    const { data: positionData } = useQuery({
+    // Read user positions from each Aqua pool (per-pool breakdown, no auto-amplification)
+    const { data: poolPositions } = useQuery({
         queryKey: ['aqua-positions', address],
         queryFn: async () => {
-            if (!address || !publicClient) return { count: 0, totalLiquidity: 0n }
+            if (!address || !publicClient) return []
 
-            let activeCount = 0
-            let totalLiq = 0n
+            const positions: { poolName: string; amount: bigint; hook: string }[] = []
 
             for (const pool of AQUA_POOLS) {
-                // Compute poolId = keccak256(abi.encode(currency0, currency1, fee, tickSpacing, hooks))
                 const { encodePacked, keccak256, encodeAbiParameters } = await import('viem')
                 const poolId = keccak256(encodeAbiParameters(
                     [{ type: 'address' }, { type: 'address' }, { type: 'uint24' }, { type: 'int24' }, { type: 'address' }],
                     [MUSDC as `0x${string}`, MWETH as `0x${string}`, pool.fee, pool.tickSpacing, pool.hook]
                 ))
-                // posKey = keccak256(encodePacked(user, poolId))
                 const posKey = keccak256(encodePacked(['address', 'bytes32'], [address as `0x${string}`, poolId]))
 
                 const result = await publicClient.readContract({
@@ -125,18 +125,17 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
 
                 const amount = result[1] as bigint
                 if (amount > 0n) {
-                    activeCount++
-                    totalLiq += amount
+                    positions.push({ poolName: pool.name, amount, hook: pool.hook })
                 }
             }
 
-            return { count: activeCount, totalLiquidity: totalLiq }
+            return positions
         },
         enabled: !!address && !!publicClient,
         refetchInterval: 15000,
     })
 
-    const activePoolCount = positionData?.count ?? 0
+    const activePositions = poolPositions ?? []
 
     // Modal state
     const [actionDialog, setActionDialog] = useState<{ isOpen: boolean; type: 'deposit' | 'withdraw'; tokenAddress: string } | null>(null)
@@ -242,7 +241,7 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
     return (
         <Card className="mb-8">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle>Real Liquidity (Shared Pool)</CardTitle>
+                <CardTitle>Your Capital</CardTitle>
                 <Button variant="ghost" size="icon" onClick={() => refetch()} disabled={isLoading} className="h-8 w-8">
                     <RefreshCw className={`h-4 w-4 text-muted-foreground ${isLoading ? 'animate-spin' : ''}`} />
                 </Button>
@@ -251,9 +250,12 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                 <div className="space-y-4 pt-4">
                     {uniqueTokens.map(token => {
                         const bal = balances?.find(b => b.token.toLowerCase() === token.address.toLowerCase())
-                        const depositedFmt = bal ? Number(formatUnits(BigInt(bal.freeBalance), token.decimals)).toFixed(4) : "0.0000"
-                        const amplifiedVal = bal && activePoolCount > 0 ? BigInt(bal.freeBalance) * BigInt(activePoolCount) : 0n
-                        const sharedFmt = Number(formatUnits(amplifiedVal, token.decimals)).toFixed(4)
+                        const freeBalanceRaw = BigInt(bal?.freeBalance || "0")
+                        const depositedNum = Number(formatUnits(freeBalanceRaw, token.decimals))
+                        const depositedFmt = depositedNum.toFixed(4)
+                        const isETH = token.symbol.toLowerCase().includes('weth') || token.symbol.toLowerCase().includes('eth')
+                        const usdValue = isETH ? depositedNum * ETH_PRICE_USD : depositedNum
+                        const earnedFeesRaw = BigInt(bal?.earnedFees || "0")
 
                         return (
                             <div key={token.address} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl border border-border/50 bg-secondary/10">
@@ -263,9 +265,9 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                                         <h4 className="font-semibold">{token.symbol}</h4>
                                         <div className="flex gap-4 mt-1 text-sm font-mono flex-wrap">
                                             <span className="text-muted-foreground">Deposited: {depositedFmt}</span>
-                                            <span className="text-emerald-500 font-medium">Virtual{activePoolCount > 0 ? ` (${activePoolCount}x)` : ''}: {sharedFmt}</span>
-                                            {bal && BigInt(bal.earnedFees || "0") > 0n && (
-                                                <span className="text-amber-500 font-medium">Fees: {Number(formatUnits(BigInt(bal.earnedFees), token.decimals)).toFixed(4)}</span>
+                                            <span className="text-muted-foreground/60">~${usdValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                                            {earnedFeesRaw > 0n && (
+                                                <span className="text-amber-500 font-medium">Fees: {Number(formatUnits(earnedFeesRaw, token.decimals)).toFixed(4)}</span>
                                             )}
                                         </div>
                                     </div>
@@ -291,6 +293,29 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                             </div>
                         )
                     })}
+
+                    {/* Active Pool Positions — only shown if user has amplified to pools */}
+                    {activePositions.length > 0 && (
+                        <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                            <h4 className="text-sm font-semibold text-emerald-400 mb-3">Amplified in {activePositions.length} pool{activePositions.length > 1 ? 's' : ''}</h4>
+                            <div className="space-y-2">
+                                {activePositions.map(pos => (
+                                    <div key={pos.hook} className="flex items-center justify-between text-sm">
+                                        <span className="text-muted-foreground">{pos.poolName}</span>
+                                        <span className="font-mono">{Number(formatUnits(pos.amount, 18)).toFixed(4)} liquidity</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {activePositions.length === 0 && (
+                        <div className="mt-2 rounded-lg border border-dashed border-border/40 p-3 text-center">
+                            <p className="text-xs text-muted-foreground">
+                                Capital deposited but not yet amplified. Go to a pool to amplify your capital across strategies.
+                            </p>
+                        </div>
+                    )}
                 </div>
             </CardContent>
 

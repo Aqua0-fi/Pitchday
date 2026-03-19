@@ -28,7 +28,7 @@ const TRANCHEFI_POOLS: V4Pool[] = TRANCHES_POOLS.map((pool) => ({
     token0: { address: TRANCHES_POOL_KEY.currency0, symbol: 'mUSDC', decimals: 18 },
     token1: { address: TRANCHES_POOL_KEY.currency1, symbol: 'mWETH', decimals: 18 },
     currentTick: 0,
-    currentPrice: 1,
+    currentPrice: 2000,
     sqrtPriceX96: '79228162514264337593543950336',
     fee: pool.fee,
     tickSpacing: pool.tickSpacing,

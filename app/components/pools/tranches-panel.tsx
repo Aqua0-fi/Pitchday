@@ -225,6 +225,39 @@ export function TrancheDeposit({ poolPrice = 2000 }: { poolPrice?: number }) {
   const deposit = useTranchesDeposit()
   const { balance0, balance1 } = useTokenBalances(address ?? undefined)
 
+  // Read SharedPool balance to show as context
+  const { data: sharedPoolBalances } = useReadContracts({
+    contracts: address ? [
+      {
+        address: TRANCHES_SHARED_POOL,
+        abi: [{
+          name: 'freeBalance',
+          type: 'function',
+          stateMutability: 'view',
+          inputs: [{ name: 'user', type: 'address' }, { name: 'token', type: 'address' }],
+          outputs: [{ name: '', type: 'uint256' }],
+        }] as const,
+        functionName: 'freeBalance',
+        args: [address as `0x${string}`, TRANCHES_POOL_KEY.currency0],
+      },
+      {
+        address: TRANCHES_SHARED_POOL,
+        abi: [{
+          name: 'freeBalance',
+          type: 'function',
+          stateMutability: 'view',
+          inputs: [{ name: 'user', type: 'address' }, { name: 'token', type: 'address' }],
+          outputs: [{ name: '', type: 'uint256' }],
+        }] as const,
+        functionName: 'freeBalance',
+        args: [address as `0x${string}`, TRANCHES_POOL_KEY.currency1],
+      },
+    ] : [],
+    query: { enabled: !!address, refetchInterval: 10_000 },
+  })
+  const sharedBalance0 = (sharedPoolBalances?.[0]?.result as bigint) ?? 0n
+  const sharedBalance1 = (sharedPoolBalances?.[1]?.result as bigint) ?? 0n
+
   // currency0 = mUSDC (lower address), currency1 = mWETH (higher address)
   const handleAmount0Change = (val: string) => {
     setAmount0(val)
@@ -273,14 +306,24 @@ export function TrancheDeposit({ poolPrice = 2000 }: { poolPrice?: number }) {
 
   return (
     <div className="space-y-4">
-      {/* Deposit header */}
+      {/* Amplify header */}
       <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
         <div className="flex items-center gap-2">
-          <Wallet className="h-5 w-5 text-emerald-400" />
-          <span className="font-bold text-emerald-400">Deposit Liquidity</span>
+          <Zap className="h-5 w-5 text-emerald-400" />
+          <span className="font-bold text-emerald-400">Amplify Capital to This Pool</span>
         </div>
-        <p className="text-xs text-muted-foreground mt-1">Provide mUSDC + mWETH to earn swap fees from this pool</p>
+        <p className="text-xs text-muted-foreground mt-1">Your deposited capital will earn swap fees from this pool. Same capital can back multiple pools simultaneously.</p>
       </div>
+
+      {/* SharedPool balance context */}
+      {(sharedBalance0 > 0n || sharedBalance1 > 0n) && (
+        <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-2.5 flex items-center gap-2">
+          <Info className="h-4 w-4 text-blue-400 shrink-0" />
+          <p className="text-xs text-blue-300/80">
+            Your Aqua0 account: <span className="font-mono font-medium">{fmt(sharedBalance0, 18, 2)} mUSDC</span> + <span className="font-mono font-medium">{fmt(sharedBalance1, 18, 6)} mWETH</span>
+          </p>
+        </div>
+      )}
 
       {/* Amount inputs */}
       <div className="space-y-3">
@@ -330,7 +373,7 @@ export function TrancheDeposit({ poolPrice = 2000 }: { poolPrice?: number }) {
       {deposit.step === 'done' ? (
         <Button onClick={() => { deposit.reset(); setAmount0(''); setAmount1('') }} variant="outline" className="w-full gap-2">
           <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-          Deposit Successful — Deposit More
+          Amplified Successfully — Add More
         </Button>
       ) : deposit.step === 'error' ? (
         <div className="space-y-2">
@@ -353,7 +396,7 @@ export function TrancheDeposit({ poolPrice = 2000 }: { poolPrice?: number }) {
         >
           {isProcessing && <Loader2 className="h-4 w-4 animate-spin" />}
           {deposit.step === 'idle'
-            ? 'Deposit Liquidity'
+            ? 'Amplify Capital'
             : stepLabel[deposit.step]}
         </Button>
       )}
@@ -545,8 +588,8 @@ export function TranchesPanel() {
         <>
           <div className="border-t border-border/30 pt-6">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <ArrowDownToLine className="h-5 w-5" />
-              Deposit into Tranche
+              <Zap className="h-5 w-5" />
+              Amplify Capital
             </h3>
             <TrancheDeposit />
           </div>
