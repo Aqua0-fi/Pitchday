@@ -296,22 +296,22 @@ contract TranchesHook is IHooks, Aqua0BaseHook {
             return (IHooks.afterSwap.selector, 0);
         }
 
-        // NOTE: Do NOT call poolManager.take() here — the return delta handles settlement.
-        // Calling both take() AND returning a delta would double-charge swappers.
-
         // Determine which currency index this fee belongs to
         bool isCurrency0 = Currency.unwrap(feeCurrency) == Currency.unwrap(key.currency0);
 
-        // Distribute via waterfall
+        // Distribute via waterfall (updates rewardPerShare for LPs to claim)
         _distributeWaterfall(poolId, key, config, feeAmount, isCurrency0);
+
+        // Take fee tokens from PoolManager to this hook (for LP claims later)
+        poolManager.take(feeCurrency, address(this), feeAmount);
 
         // Store committed price for IL calculation (prevents same-block slot0 manipulation)
         (uint160 postSwapPrice,,,) = poolManager.getSlot0(poolId);
         config.lastSwapSqrtPriceX96 = postSwapPrice;
         config.lastSwapBlock = block.number;
 
-        // Return the fee amount as the hook's delta
-        return (IHooks.afterSwap.selector, feeAmount.toInt128());
+        // Return fee as hook delta so PoolManager charges swapper the extra amount
+        return (IHooks.afterSwap.selector, int128(uint128(feeAmount)));
     }
 
     /// @notice Called after liquidity is removed via V4 modifyLiquidity.

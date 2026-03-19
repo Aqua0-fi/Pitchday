@@ -14,11 +14,11 @@ MWETH="0x7fF28651365c735c22960E27C2aFA97AbE4Cf2Ad"
 # Approve router (infinite) for both tokens
 echo "=== Approving router for mUSDC..."
 cast send $MUSDC "approve(address,uint256)" $ROUTER $(cast max-uint) --rpc-url $RPC --private-key $PK
-sleep 3
+sleep 8
 
 echo "=== Approving router for mWETH..."
 cast send $MWETH "approve(address,uint256)" $ROUTER $(cast max-uint) --rpc-url $RPC --private-key $PK
-sleep 3
+sleep 8
 
 # Min/Max sqrtPriceLimitX96
 MIN_SQRT="4295128740"
@@ -42,7 +42,7 @@ swap() {
         "0x" \
         --rpc-url $RPC --private-key $PK
     echo "  Done!"
-    sleep 5
+    sleep 8
 }
 
 echo ""
