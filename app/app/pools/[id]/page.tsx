@@ -14,7 +14,7 @@ import { isTranchesHook, isTraditionalHook, TRANCHES_SHARED_POOL, TRANCHES_POOLS
 import { useReadContracts } from 'wagmi'
 import { formatUnits } from 'viem'
 import { RSCOracleSimulator } from '@/components/pools/rsc-oracle-simulator'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+// no recharts needed
 
 function fmt(val: bigint, decimals = 18, dp = 4): string {
     const str = formatUnits(val, decimals)
@@ -183,32 +183,28 @@ function PoolStatsWithChart({ pool, sharedPoolAddr, isAqua }: { pool: any; share
 
     const mWETHNum = Number(formatUnits(mWETH, 18))
     const mUSDCNum = Number(formatUnits(mUSDC, 18))
-
-    const chartData = [
-        { name: 'mWETH', value: mWETHNum, fill: '#8b5cf6' },
-        { name: 'mUSDC', value: mUSDCNum, fill: '#10b981' },
-    ]
+    const maxVal = Math.max(mWETHNum, mUSDCNum, 1)
 
     return (
         <div className="mb-8 space-y-6">
             {/* Stats row */}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total mWETH</p>
-                    <p className="mt-1.5 text-2xl font-bold tabular-nums">
-                        {isLoading ? '...' : fmt(mWETH)}
-                    </p>
-                </div>
-                <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total mUSDC</p>
-                    <p className="mt-1.5 text-2xl font-bold tabular-nums">
-                        {isLoading ? '...' : fmt(mUSDC)}
-                    </p>
-                </div>
-                <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Swap Fee</p>
                     <p className="mt-1.5 text-2xl font-bold tabular-nums text-emerald-400">
                         {(pool.fee / 10000).toFixed(2)}%
+                    </p>
+                </div>
+                <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">ETH Price</p>
+                    <p className="mt-1.5 text-2xl font-bold tabular-nums">
+                        {pool.currentPrice.toPrecision(5)}
+                    </p>
+                </div>
+                <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Current Tick</p>
+                    <p className="mt-1.5 text-2xl font-bold tabular-nums">
+                        {pool.currentTick}
                     </p>
                 </div>
                 <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
@@ -219,43 +215,46 @@ function PoolStatsWithChart({ pool, sharedPoolAddr, isAqua }: { pool: any; share
                 </div>
             </div>
 
-            {/* Liquidity bar chart */}
+            {/* Liquidity visual */}
             <div className="rounded-xl border border-border/50 bg-secondary/20 p-5">
-                <p className="text-sm font-semibold mb-4">Pool Liquidity</p>
+                <p className="text-sm font-semibold mb-5">Pool Liquidity</p>
                 {isLoading ? (
-                    <div className="h-48 animate-pulse rounded-lg bg-white/[0.03]" />
+                    <div className="h-24 animate-pulse rounded-lg bg-white/[0.03]" />
                 ) : (
-                    <div className="h-48">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={chartData} layout="vertical" margin={{ left: 10, right: 30 }}>
-                                <XAxis type="number" hide />
-                                <YAxis
-                                    type="category"
-                                    dataKey="name"
-                                    width={60}
-                                    tick={{ fill: '#9ca3af', fontSize: 12 }}
-                                    axisLine={false}
-                                    tickLine={false}
+                    <div className="space-y-4">
+                        {/* mWETH bar */}
+                        <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                                <div className="flex items-center gap-2">
+                                    <div className="h-3 w-3 rounded-full bg-violet-500" />
+                                    <span className="text-sm font-medium">mWETH</span>
+                                </div>
+                                <span className="text-sm font-bold tabular-nums">{mWETHNum.toFixed(4)}</span>
+                            </div>
+                            <div className="h-3 w-full rounded-full bg-white/[0.04] overflow-hidden">
+                                <div
+                                    className="h-full rounded-full bg-gradient-to-r from-violet-600 to-violet-400 transition-all duration-500"
+                                    style={{ width: `${Math.max((mWETHNum / maxVal) * 100, 2)}%` }}
                                 />
-                                <Tooltip
-                                    contentStyle={{
-                                        backgroundColor: '#1a1a2e',
-                                        border: '1px solid rgba(255,255,255,0.1)',
-                                        borderRadius: '8px',
-                                        color: '#fff',
-                                        fontSize: '12px',
-                                        padding: '8px 12px',
-                                    }}
-                                    itemStyle={{ color: '#fff' }}
-                                    formatter={(value: number) => [value.toFixed(4), 'Amount']}
+                            </div>
+                        </div>
+
+                        {/* mUSDC bar */}
+                        <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                                <div className="flex items-center gap-2">
+                                    <div className="h-3 w-3 rounded-full bg-emerald-500" />
+                                    <span className="text-sm font-medium">mUSDC</span>
+                                </div>
+                                <span className="text-sm font-bold tabular-nums">{mUSDCNum.toFixed(2)}</span>
+                            </div>
+                            <div className="h-3 w-full rounded-full bg-white/[0.04] overflow-hidden">
+                                <div
+                                    className="h-full rounded-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-500"
+                                    style={{ width: `${Math.max((mUSDCNum / maxVal) * 100, 2)}%` }}
                                 />
-                                <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={32}>
-                                    {chartData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                                    ))}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>
