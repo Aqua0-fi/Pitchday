@@ -4,18 +4,42 @@ import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { TokenIcon } from '@/components/token-icon'
 import { useWallet } from '@/contexts/wallet-context'
 import { useSharedBalances } from '@/hooks/use-shared-balances'
 import { V4Pool } from '@/lib/v4-api'
 import { useToast } from '@/hooks/use-toast'
-import { useSendTransaction, usePublicClient } from 'wagmi'
+import { useWriteContract, usePublicClient } from 'wagmi'
 import { formatUnits, parseUnits } from 'viem'
-import { api } from '@/lib/api-client'
-import { BACKEND_CHAIN_IDS } from '@/lib/contracts'
+import { ERC20_ABI, TRANCHES_SHARED_POOL } from '@/lib/contracts'
 import { ArrowDownToLine, ArrowUpFromLine, RefreshCw } from 'lucide-react'
+
+const SHARED_POOL_ABI = [
+  {
+    name: 'deposit',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'to', type: 'address' },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'withdraw',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'from', type: 'address' },
+      { name: 'to', type: 'address' },
+    ],
+    outputs: [],
+  },
+] as const
 
 interface RealLiquidityManagerProps {
     pools: V4Pool[]
@@ -24,7 +48,7 @@ interface RealLiquidityManagerProps {
 export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
     const { isConnected, address, chainId } = useWallet()
     const { toast } = useToast()
-    const { sendTransactionAsync } = useSendTransaction()
+    const { writeContractAsync } = useWriteContract()
     const publicClient = usePublicClient()
 
     // Extract unique tokens from pools
@@ -63,36 +87,45 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
     }
 
     const handleSubmit = async () => {
-        if (!activeToken || !actionDialog || !amount || parseFloat(amount) <= 0) return
+        if (!activeToken || !actionDialog || !amount || parseFloat(amount) <= 0 || !address) return
 
         setIsSubmitting(true)
         try {
-            const backendChainId = BACKEND_CHAIN_IDS[chainId!] ?? 696969
-            const amountRaw = parseUnits(amount, activeToken.decimals).toString()
-            const isNative = activeToken.address === '0x0000000000000000000000000000000000000000'
-
-            const sendAndWait = async (calldata: any, label: string) => {
-                toast({ title: `${label}...`, description: 'Waiting for wallet confirmation' })
-                const hash = await sendTransactionAsync({
-                    to: calldata.to,
-                    data: calldata.data,
-                    value: calldata.value ? BigInt(calldata.value) : undefined
-                })
-                toast({ title: `${label} submitted`, description: 'Waiting for chain confirmation…' })
-                await publicClient!.waitForTransactionReceipt({ hash })
-            }
+            const amountParsed = parseUnits(amount, activeToken.decimals)
 
             if (actionDialog.type === 'deposit') {
-                if (!isNative) {
-                    const { calldata: aprvCall } = await api.post<{ calldata: any }>('v4/lp/prepare-approve', { token: activeToken.address, amount: amountRaw }, { chainId: String(backendChainId) })
-                    await sendAndWait(aprvCall, `Approve ${activeToken.symbol}`)
-                }
-                const { calldata: depCall } = await api.post<{ calldata: any }>('v4/lp/prepare-deposit', { token: activeToken.address, amount: amountRaw }, { chainId: String(backendChainId) })
-                await sendAndWait(depCall, `Deposit ${activeToken.symbol}`)
+                // Step 1: Approve token to SharedPool
+                toast({ title: `Approving ${activeToken.symbol}...`, description: 'Confirm in wallet' })
+                const approveHash = await writeContractAsync({
+                    address: activeToken.address as `0x${string}`,
+                    abi: ERC20_ABI,
+                    functionName: 'approve',
+                    args: [TRANCHES_SHARED_POOL, amountParsed],
+                })
+                await publicClient!.waitForTransactionReceipt({ hash: approveHash })
+
+                // Step 2: Deposit to SharedPool
+                toast({ title: `Depositing ${activeToken.symbol}...`, description: 'Confirm in wallet' })
+                const depositHash = await writeContractAsync({
+                    address: TRANCHES_SHARED_POOL,
+                    abi: SHARED_POOL_ABI,
+                    functionName: 'deposit',
+                    args: [activeToken.address as `0x${string}`, amountParsed, address as `0x${string}`],
+                })
+                await publicClient!.waitForTransactionReceipt({ hash: depositHash })
+
                 toast({ title: "✅ Deposit Successful!" })
             } else {
-                const { calldata: withCall } = await api.post<{ calldata: any }>('v4/lp/prepare-withdraw', { token: activeToken.address, amount: amountRaw }, { chainId: String(backendChainId) })
-                await sendAndWait(withCall, `Withdraw ${activeToken.symbol}`)
+                // Withdraw from SharedPool
+                toast({ title: `Withdrawing ${activeToken.symbol}...`, description: 'Confirm in wallet' })
+                const withdrawHash = await writeContractAsync({
+                    address: TRANCHES_SHARED_POOL,
+                    abi: SHARED_POOL_ABI,
+                    functionName: 'withdraw',
+                    args: [activeToken.address as `0x${string}`, amountParsed, address as `0x${string}`, address as `0x${string}`],
+                })
+                await publicClient!.waitForTransactionReceipt({ hash: withdrawHash })
+
                 toast({ title: "✅ Withdrawal Successful!" })
             }
 
@@ -101,7 +134,7 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
             refetch()
         } catch (error: any) {
             console.error(error)
-            toast({ title: "Action Failed", description: error.message || "Unknown error", variant: "destructive" })
+            toast({ title: "Action Failed", description: error?.shortMessage || error.message || "Unknown error", variant: "destructive" })
         } finally {
             setIsSubmitting(false)
         }
@@ -156,38 +189,6 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                                     >
                                         <ArrowUpFromLine className="mr-1 h-3.5 w-3.5" /> Withdraw
                                     </Button>
-                                    {bal && BigInt(bal.earnedFees || "0") > 0n && (
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="flex-1 sm:flex-none w-full sm:w-auto mt-2 sm:mt-0 border-amber-500/30 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 hover:text-amber-400"
-                                            onClick={async () => {
-                                                setIsSubmitting(true)
-                                                try {
-                                                    const backendChainId = BACKEND_CHAIN_IDS[chainId!] ?? 696969
-                                                    const { calldata } = await api.post<{ calldata: any }>('v4/lp/prepare-claim-fees', { token: token.address }, { chainId: String(backendChainId) })
-                                                    toast({ title: `Claiming ${token.symbol} Fees...`, description: 'Waiting for wallet confirmation' })
-                                                    const hash = await sendTransactionAsync({
-                                                        to: calldata.to,
-                                                        data: calldata.data,
-                                                        value: calldata.value ? BigInt(calldata.value) : undefined
-                                                    })
-                                                    toast({ title: "Fees Claimed", description: 'Waiting for chain confirmation…' })
-                                                    await publicClient!.waitForTransactionReceipt({ hash })
-                                                    toast({ title: "✅ Fees Successfully Claimed!" })
-                                                    refetch()
-                                                } catch (error: any) {
-                                                    console.error(error)
-                                                    toast({ title: "Claim Failed", description: error.message || "Unknown error", variant: "destructive" })
-                                                } finally {
-                                                    setIsSubmitting(false)
-                                                }
-                                            }}
-                                            disabled={isSubmitting}
-                                        >
-                                            🏆 Claim Fees
-                                        </Button>
-                                    )}
                                 </div>
                             </div>
                         )
