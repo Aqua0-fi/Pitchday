@@ -56,14 +56,14 @@ swap $HOOK_CONS 500 10 true "-500000000000000000000" "Swap 1: 500 mUSDC -> mWETH
 # Swap 2: Standard — 0.1 mWETH -> mUSDC
 swap $HOOK_STD 3000 60 false "-100000000000000000" "Swap 2: 0.1 mWETH -> mUSDC via Standard (0.30%)"
 
-# Swap 3: Aggressive — 100 mUSDC -> mWETH
-swap $HOOK_AGG 10000 200 true "-100000000000000000000" "Swap 3: 100 mUSDC -> mWETH via Aggressive (1.00%)"
+# Swap 3: Traditional — 500 mUSDC -> mWETH
+swap $HOOK_TRAD 3000 60 true "-500000000000000000000" "Swap 3: 500 mUSDC -> mWETH via Traditional (0.30%)"
 
-# Swap 4: Traditional — 0.05 mWETH -> mUSDC
-swap $HOOK_TRAD 3000 60 false "-50000000000000000" "Swap 4: 0.05 mWETH -> mUSDC via Traditional (0.30%)"
+# Swap 4: Conservative — 0.1 mWETH -> mUSDC
+swap $HOOK_CONS 500 10 false "-100000000000000000" "Swap 4: 0.1 mWETH -> mUSDC via Conservative (0.05%)"
 
-# Swap 5: Conservative — 200 mUSDC -> mWETH
-swap $HOOK_CONS 500 10 true "-200000000000000000000" "Swap 5: 200 mUSDC -> mWETH via Conservative (0.05%)"
+# Swap 5: Standard — 300 mUSDC -> mWETH
+swap $HOOK_STD 3000 60 true "-300000000000000000000" "Swap 5: 300 mUSDC -> mWETH via Standard (0.30%)"
 
 echo ""
 echo "========================================"

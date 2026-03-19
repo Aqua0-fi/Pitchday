@@ -425,7 +425,7 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                                             {pos.poolName} {isAqua ? '(Aqua)' : '(Traditional)'}
                                         </span>
                                         <span className="text-foreground">
-                                            {fees0Num.toFixed(6)} mUSDC / {fees1Num.toFixed(6)} mWETH
+                                            {fees1Num.toFixed(6)} mUSDC / {fees0Num.toFixed(6)} mWETH
                                         </span>
                                     </div>
                                 )
@@ -434,7 +434,7 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                             <div className="border-t border-emerald-500/20 pt-2 mt-2 flex items-center justify-between text-sm font-mono font-semibold">
                                 <span className="text-emerald-300">TOTAL</span>
                                 <span className="text-emerald-300">
-                                    {Number(formatUnits(activePositions.reduce((sum, p) => sum + p.fees0, 0n), 18)).toFixed(6)} mUSDC / {Number(formatUnits(activePositions.reduce((sum, p) => sum + p.fees1, 0n), 18)).toFixed(6)} mWETH
+                                    {Number(formatUnits(activePositions.reduce((sum, p) => sum + p.fees1, 0n), 18)).toFixed(6)} mUSDC / {Number(formatUnits(activePositions.reduce((sum, p) => sum + p.fees0, 0n), 18)).toFixed(6)} mWETH
                                 </span>
                             </div>
                         </div>

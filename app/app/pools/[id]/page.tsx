@@ -338,7 +338,7 @@ function PoolPosition({ hookAddress }: { hookAddress: `0x${string}` }) {
                         <div>
                             <span className="text-muted-foreground">Earned Fees</span>
                             <span className="ml-2 font-mono text-emerald-400">
-                                {Number(formatUnits(fees0, 18)).toFixed(4)} mUSDC / {Number(formatUnits(fees1, 18)).toFixed(4)} mWETH
+                                {Number(formatUnits(fees1, 18)).toFixed(4)} mUSDC / {Number(formatUnits(fees0, 18)).toFixed(4)} mWETH
                             </span>
                         </div>
                     </div>
