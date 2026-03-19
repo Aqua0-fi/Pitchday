@@ -54,18 +54,19 @@ const POOL_KEY_TUPLE = {
   ],
 }
 
-const PENDING_FEES_ABI = [
+const GET_POOL_STATS_ABI = [
   {
-    name: 'pendingFees',
+    name: 'getPoolStats',
     type: 'function',
     stateMutability: 'view',
-    inputs: [
-      { name: 'lp', type: 'address' },
-      { name: 'key', ...POOL_KEY_TUPLE },
-    ],
+    inputs: [{ name: 'key', ...POOL_KEY_TUPLE }],
     outputs: [
-      { name: 'pending0', type: 'uint256' },
-      { name: 'pending1', type: 'uint256' },
+      { name: 'totalSenior', type: 'uint256' },
+      { name: 'totalJunior', type: 'uint256' },
+      { name: 'seniorFees', type: 'uint256' },
+      { name: 'juniorFees', type: 'uint256' },
+      { name: 'seniorAPY', type: 'uint256' },
+      { name: 'seniorRatio', type: 'uint256' },
     ],
   },
 ] as const
@@ -152,26 +153,28 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
 
                 const amount = result[1] as bigint
                 if (amount > 0n) {
-                    // Also fetch pending fees for this pool
+                    // Read pool-level fees from getPoolStats and compute user's share
                     let fees0 = 0n, fees1 = 0n
                     try {
-                        const feesResult = await publicClient.readContract({
+                        const stats = await publicClient.readContract({
                             address: pool.hook,
-                            abi: PENDING_FEES_ABI,
-                            functionName: 'pendingFees',
-                            args: [
-                                address as `0x${string}`,
-                                {
-                                    currency0: MUSDC as `0x${string}`,
-                                    currency1: MWETH as `0x${string}`,
-                                    fee: pool.fee,
-                                    tickSpacing: pool.tickSpacing,
-                                    hooks: pool.hook,
-                                },
-                            ],
-                        }) as [bigint, bigint]
-                        fees0 = feesResult[0]
-                        fees1 = feesResult[1]
+                            abi: GET_POOL_STATS_ABI,
+                            functionName: 'getPoolStats',
+                            args: [{
+                                currency0: MUSDC as `0x${string}`,
+                                currency1: MWETH as `0x${string}`,
+                                fee: pool.fee,
+                                tickSpacing: pool.tickSpacing,
+                                hooks: pool.hook,
+                            }],
+                        }) as [bigint, bigint, bigint, bigint, bigint, bigint]
+                        const [totalSenior, totalJunior, seniorFees, juniorFees] = stats
+                        const totalLiq = totalSenior + totalJunior
+                        // User's share of fees proportional to their liquidity
+                        if (totalLiq > 0n) {
+                            const totalFees = seniorFees + juniorFees
+                            fees0 = totalFees * amount / totalLiq
+                        }
                     } catch {}
                     positions.push({ poolName: pool.label, amount, hook: pool.hook, fees0, fees1 })
                 }
@@ -196,23 +199,24 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                 if (amount > 0n) {
                     let fees0 = 0n, fees1 = 0n
                     try {
-                        const feesResult = await publicClient.readContract({
+                        const stats = await publicClient.readContract({
                             address: tradPool.hook,
-                            abi: PENDING_FEES_ABI,
-                            functionName: 'pendingFees',
-                            args: [
-                                address as `0x${string}`,
-                                {
-                                    currency0: MUSDC as `0x${string}`,
-                                    currency1: MWETH as `0x${string}`,
-                                    fee: tradPool.fee,
-                                    tickSpacing: tradPool.tickSpacing,
-                                    hooks: tradPool.hook,
-                                },
-                            ],
-                        }) as [bigint, bigint]
-                        fees0 = feesResult[0]
-                        fees1 = feesResult[1]
+                            abi: GET_POOL_STATS_ABI,
+                            functionName: 'getPoolStats',
+                            args: [{
+                                currency0: MUSDC as `0x${string}`,
+                                currency1: MWETH as `0x${string}`,
+                                fee: tradPool.fee,
+                                tickSpacing: tradPool.tickSpacing,
+                                hooks: tradPool.hook,
+                            }],
+                        }) as [bigint, bigint, bigint, bigint, bigint, bigint]
+                        const [totalSenior, totalJunior, seniorFees, juniorFees] = stats
+                        const totalLiq = totalSenior + totalJunior
+                        if (totalLiq > 0n) {
+                            const totalFees = seniorFees + juniorFees
+                            fees0 = totalFees * amount / totalLiq
+                        }
                     } catch {}
                     positions.push({ poolName: tradPool.label, amount, hook: tradPool.hook, fees0, fees1 })
                 }
@@ -425,7 +429,7 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                                             {pos.poolName} {isAqua ? '(Aqua)' : '(Traditional)'}
                                         </span>
                                         <span className="text-foreground">
-                                            {fees1Num.toFixed(6)} mUSDC / {fees0Num.toFixed(6)} mWETH
+                                            {fees0Num.toFixed(6)} fees earned
                                         </span>
                                     </div>
                                 )
@@ -434,7 +438,7 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                             <div className="border-t border-emerald-500/20 pt-2 mt-2 flex items-center justify-between text-sm font-mono font-semibold">
                                 <span className="text-emerald-300">TOTAL</span>
                                 <span className="text-emerald-300">
-                                    {Number(formatUnits(activePositions.reduce((sum, p) => sum + p.fees1, 0n), 18)).toFixed(6)} mUSDC / {Number(formatUnits(activePositions.reduce((sum, p) => sum + p.fees0, 0n), 18)).toFixed(6)} mWETH
+                                    {Number(formatUnits(activePositions.reduce((sum, p) => sum + p.fees0, 0n), 18)).toFixed(6)} total fees earned
                                 </span>
                             </div>
                         </div>
