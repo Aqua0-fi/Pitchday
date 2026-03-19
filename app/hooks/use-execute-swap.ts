@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
-import { parseUnits } from 'viem'
+import { parseUnits, maxUint256 } from 'viem'
 import type { Address } from 'viem'
-import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
+import { useWriteContract, useWaitForTransactionReceipt, useAccount, usePublicClient, useReadContract } from 'wagmi'
 import { SWAP_VM_ROUTER, V4_ROUTER_ABI, ERC20_ABI } from '@/lib/contracts'
 import { useSwapRouter } from './use-swap-router'
 import type { V4Pool } from '@/lib/v4-api'
@@ -28,7 +28,9 @@ export function useExecuteSwap(owner?: string) {
   const [error, setError] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>()
 
-  const { chainId } = useAccount()
+  const account = useAccount()
+  const { chainId } = account
+  const publicClient = usePublicClient()
   const { data: routeAddress } = useSwapRouter(chainId)
   const routerTarget = routeAddress || SWAP_VM_ROUTER
 
@@ -53,15 +55,24 @@ export function useExecuteSwap(owner?: string) {
       const isNativeToken = tokenIn === "0x0000000000000000000000000000000000000000"
 
       if (!isNativeToken) {
-        // 1. Approve ERC20 spend
+        // 1. Approve ERC20 spend (infinite, skip if already approved)
         setStep('approving')
-        // Note: In production we'd check allowance first to save gas and clicks
-        await writeContractAsync({
+        const allowance = await publicClient!.readContract({
           address: tokenIn as Address,
           abi: ERC20_ABI,
-          functionName: 'approve',
-          args: [routerTarget, amountInRaw],
-        })
+          functionName: 'allowance',
+          args: [account.address!, routerTarget],
+        }) as bigint
+        if (allowance < amountInRaw) {
+          const approveTx = await writeContractAsync({
+            address: tokenIn as Address,
+            abi: ERC20_ABI,
+            functionName: 'approve',
+            args: [routerTarget, maxUint256],
+          })
+          // Wait for approve to confirm before sending swap tx
+          await publicClient!.waitForTransactionReceipt({ hash: approveTx })
+        }
       }
 
       // 2. Execute V4 Swap

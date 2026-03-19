@@ -1,7 +1,7 @@
 import type { Address } from 'viem'
 
 // SwapVMRouter / V4 PoolSwapTest Router
-export const SWAP_VM_ROUTER: Address = '0xB9818483D01ca0e721849703C58148CFb81328fC'
+export const SWAP_VM_ROUTER: Address = '0x84175aA7EfD2805Ff8Dc2CF49EC3990b50daf3a1'
 
 // USE_AQUA_BIT flag (1 << 254) — required in order.traits for the router
 // Pre-computed: (1n << 254n).toString()
@@ -100,7 +100,7 @@ export const POOL_MANAGER: Address = '0x00B036B58a818B1BC34d502D3fE730Db729e62AC
 
 // ─── TrancheFi Multi-Pool (Unichain Sepolia) ─────────────────────────────────
 
-export const TRANCHES_SHARED_POOL: Address = '0x175006E457649bcFf7ddEEc2Bd839721ee323D13'
+export const TRANCHES_SHARED_POOL: Address = '0xFe57Bb0319938BCA85d804a7ec7129EB6cB8Ea30'
 
 // 4 TranchesHook pools — 3 Aqua (shared) + 1 Traditional (isolated)
 export const TRANCHES_POOLS = [
@@ -108,34 +108,34 @@ export const TRANCHES_POOLS = [
     label: 'Conservative',
     fee: 500,
     tickSpacing: 10,
-    hook: '0xD4e51fC27A13EE28a647B86bE5f940F77c8015C5' as Address,
-    router: '0x5E029eCc55A5B116972E9C5cC007600aCF050299' as Address,
+    hook: '0x16326eCA33f5B28e3D572Ed38B066919E8E555C5' as Address,
+    router: '0x019D1492Ec7fCbe96FD1F67f29eF17fAe3D23aDA' as Address,
     aqua: true,
   },
   {
     label: 'Standard',
     fee: 3000,
     tickSpacing: 60,
-    hook: '0x8Ce7d09c20f0d66210B4B9728A11817A3E2c95c5' as Address,
-    router: '0xE2BAa123216f7b8dA275ef499f1962f393D97456' as Address,
+    hook: '0x8E104beAC6dA7351B00b36E9f2B248F2BfD595c5' as Address,
+    router: '0xd21440fDAF823c666bAD74e607DCEA85944a3468' as Address,
     aqua: true,
   },
   {
     label: 'Aggressive',
     fee: 10000,
     tickSpacing: 200,
-    hook: '0x3Ef7aa06A7C3835231A1172828261e47EBF515c5' as Address,
-    router: '0x154758b202926d7d356aC65F508D891C6e62adF0' as Address,
+    hook: '0xA6a0b93092aF21cBAB5f69C243f0dA2cF466D5c5' as Address,
+    router: '0x3D4Ec88C692F626d9D885d60E4Fe38A99403252F' as Address,
     aqua: true,
   },
   {
     label: 'Traditional',
     fee: 3000,
     tickSpacing: 60,
-    hook: '0x743687366Cd260979489D6Ae9deB64fE14D195C5' as Address,
-    router: '0xD0e212c96ceF0463e5F925d0f4055a65Cd3FABC3' as Address,
+    hook: '0xAf99B4dBAeEfAeC6AbCb1018290ea705B3C895c5' as Address,
+    router: '0x1f1dA6CbDD85FC06A14F7fD48e7563b612f1812c' as Address,
     aqua: false,
-    isolatedPool: '0x039ecDF9837F49A34126E0889858a77F29a68c00' as Address,
+    isolatedPool: '0x88Db58098a952241432306dcdB0A33A3221e6D13' as Address,
   },
 ] as const
 

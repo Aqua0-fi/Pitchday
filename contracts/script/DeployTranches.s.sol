@@ -13,6 +13,7 @@ import {IUnlockCallback} from "@uniswap/v4-core/interfaces/callback/IUnlockCallb
 import {TransientStateLibrary} from "@uniswap/v4-core/libraries/TransientStateLibrary.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {PoolSwapTest} from "@uniswap/v4-core/test/PoolSwapTest.sol";
 import {SharedLiquidityPool} from "../src/v4/SharedLiquidityPool.sol";
 import {TranchesHook} from "../src/v4/tranches/TranchesHook.sol";
 import {TranchesRouter} from "../src/v4/tranches/TranchesRouter.sol";
@@ -166,6 +167,10 @@ contract DeployTranches is Script {
         console.log("currency0 (mUSDC):", t0);
         console.log("currency1 (mWETH):", t1);
 
+        // Deploy PoolSwapTest (the V4 swap router used by frontend + DemoSwaps)
+        PoolSwapTest swapRouter = new PoolSwapTest(IPoolManager(poolManagerAddr));
+        console.log("PoolSwapTest (swap router):", address(swapRouter));
+
         // Setup router for seeding (shared across all pools)
         TranchesSetupRouter setupRouter = new TranchesSetupRouter(IPoolManager(poolManagerAddr));
         IERC20(t0).approve(address(setupRouter), type(uint256).max);
@@ -291,6 +296,7 @@ contract DeployTranches is Script {
             '  "deployer": "', vm.toString(deployer), '",\n',
             '  "poolManager": "', vm.toString(poolManagerAddr), '",\n',
             '  "sharedLiquidityPool": "', vm.toString(address(sharedPool)), '",\n',
+            '  "swapRouter": "', vm.toString(address(swapRouter)), '",\n',
             '  "currency0": "', vm.toString(t0), '",\n',
             '  "currency1": "', vm.toString(t1), '",\n'
         );
