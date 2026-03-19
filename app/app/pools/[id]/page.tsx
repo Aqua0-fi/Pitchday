@@ -14,7 +14,7 @@ import { TranchesLiquidityModal } from '@/components/pools/tranches-liquidity-mo
 import { TrancheStats, TranchePosition } from '@/components/pools/tranches-panel'
 import { VisualLiquidityChart } from '@/components/pools/visual-liquidity-chart'
 import { RSCOracleSimulator } from '@/components/pools/rsc-oracle-simulator'
-import { TRANCHES_HOOK } from '@/lib/contracts'
+import { isTranchesHook } from '@/lib/contracts'
 
 function formatNumber(value: number): string {
     if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`
@@ -96,7 +96,7 @@ export default function PoolDetailPage() {
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
-                    {pool.poolKey.hooks.toLowerCase() === TRANCHES_HOOK.toLowerCase() && (
+                    {isTranchesHook(pool.poolKey.hooks) && (
                         <RSCOracleSimulator currentPrice={pool.currentPrice} />
                     )}
                     <div className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1.5">
@@ -164,7 +164,7 @@ export default function PoolDetailPage() {
             </div>
 
             {/* Virtual Liquidity Chart — show Tranches distribution for TranchesHook pools */}
-            {pool.poolKey.hooks.toLowerCase() === TRANCHES_HOOK.toLowerCase() ? (
+            {isTranchesHook(pool.poolKey.hooks) ? (
                 <div className="mb-8 space-y-6">
                     <div className="flex items-center gap-3">
                         <div className="flex items-center gap-1.5 rounded-full bg-violet-500/10 px-3 py-1.5">
@@ -196,7 +196,7 @@ export default function PoolDetailPage() {
             </div>
 
             {isProvideModalOpen && (
-                pool.poolKey.hooks.toLowerCase() === TRANCHES_HOOK.toLowerCase() ? (
+                isTranchesHook(pool.poolKey.hooks) ? (
                     <TranchesLiquidityModal
                         open={isProvideModalOpen}
                         onOpenChange={setIsProvideModalOpen}

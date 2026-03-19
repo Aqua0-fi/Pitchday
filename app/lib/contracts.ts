@@ -97,11 +97,44 @@ export const ACCOUNT_FACTORY_ABI = [
 // ─── Uniswap V4 PoolManager (Unichain Sepolia) ──────────────────────────────
 export const POOL_MANAGER: Address = '0x00B036B58a818B1BC34d502D3fE730Db729e62AC'
 
-// ─── TrancheFi (Unichain Sepolia) ─────────────────────────────────────────────
+// ─── TrancheFi Multi-Pool (Unichain Sepolia) ─────────────────────────────────
 
-export const TRANCHES_HOOK: Address = '0xc33B096a95DCEfDD731dB362b29df6Be2d9115C5'
-export const TRANCHES_ROUTER: Address = '0x39Dae9551B8B7D27258DF2172eCc7E326D93e828'
-export const TRANCHES_SHARED_POOL: Address = '0xbD3F2591F1C9C7d0d409AC0b9fD46Ae018980C21'
+export const TRANCHES_SHARED_POOL: Address = '0x6bE2c69791Bd2Ed505D49688f9eE416BA91254A5'
+
+// 3 TranchesHook pools with different fee tiers
+export const TRANCHES_POOLS = [
+  {
+    label: 'Conservative',
+    fee: 500,
+    tickSpacing: 10,
+    hook: '0x93b10343ab861471E255F87BD7F7cCb0604715c5' as Address,
+    router: '0x42F71fCFC5272c8D56b8937E49E4D6553Cd748B4' as Address,
+  },
+  {
+    label: 'Standard',
+    fee: 3000,
+    tickSpacing: 60,
+    hook: '0x364ff82AFfd6aBa83A51219e7709103e6E1a15C5' as Address,
+    router: '0x7f8cFD4dB377e997510f93CE52aF5B8E908218F4' as Address,
+  },
+  {
+    label: 'Aggressive',
+    fee: 10000,
+    tickSpacing: 200,
+    hook: '0x5806334782fBfeeF32d21Ad9b5168638Bbb115c5' as Address,
+    router: '0x04e1828f1403c9875ceE710fD55367A5b8A71F76' as Address,
+  },
+] as const
+
+// Default to Standard pool for backwards compat
+export const TRANCHES_HOOK: Address = TRANCHES_POOLS[1].hook
+export const TRANCHES_ROUTER: Address = TRANCHES_POOLS[1].router
+
+// Helper: check if a hook address is any of our TranchesHook pools
+const TRANCHES_HOOK_SET = new Set(TRANCHES_POOLS.map(p => p.hook.toLowerCase()))
+export function isTranchesHook(hookAddress: string): boolean {
+  return TRANCHES_HOOK_SET.has(hookAddress.toLowerCase())
+}
 
 // Global Aqua0 mock token addresses (Unichain Sepolia)
 // currency0 must be the lower address per Uniswap V4 convention
@@ -110,7 +143,7 @@ export const TRANCHES_POOL_KEY = {
   currency1: '0x7fF28651365c735c22960E27C2aFA97AbE4Cf2Ad' as Address, // mWETH
   fee: 3000,
   tickSpacing: 60,
-  hooks: '0xc33B096a95DCEfDD731dB362b29df6Be2d9115C5' as Address,
+  hooks: TRANCHES_POOLS[1].hook,
 } as const
 
 const POOL_KEY_TUPLE = {
