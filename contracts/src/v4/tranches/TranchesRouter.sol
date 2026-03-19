@@ -132,13 +132,26 @@ contract TranchesRouter is IUnlockCallback {
         // 1. Unregister tranche on hook (auto-claims pending fees)
         hook.recordVirtualWithdrawal(msg.sender, key, 0); // 0 = full position
 
-        // 2. Remove virtual position from SharedPool
-        //    Try user-owned position first (addLiquidityFromSharedPool path),
-        //    fall back to router-owned (legacy addLiquidity path)
-        sharedPool.removePosition(key, tickLower, tickUpper, msg.sender);
+        // 2. Check if user has tracked deposits (addLiquidity path = router-owned position)
+        bytes32 pid = keccak256(abi.encode(key));
+        uint256 out0 = lpDeposits[msg.sender][pid][token0];
+        uint256 out1 = lpDeposits[msg.sender][pid][token1];
+
+        if (out0 > 0 || out1 > 0) {
+            // Traditional/direct deposit path: position owned by router
+            sharedPool.removePosition(key, tickLower, tickUpper, address(this));
+
+            // Withdraw from SharedPool and send to user
+            if (out0 > 0) sharedPool.withdraw(token0, out0, address(this), address(this));
+            if (out1 > 0) sharedPool.withdraw(token1, out1, address(this), address(this));
+            if (out0 > 0) IERC20(token0).safeTransfer(msg.sender, out0);
+            if (out1 > 0) IERC20(token1).safeTransfer(msg.sender, out1);
+        } else {
+            // Aqua amplify path: position owned by user (virtual, no token movement)
+            sharedPool.removePosition(key, tickLower, tickUpper, msg.sender);
+        }
 
         // 3. Clear LP deposit tracking
-        bytes32 pid = keccak256(abi.encode(key));
         lpDeposits[msg.sender][pid][token0] = 0;
         lpDeposits[msg.sender][pid][token1] = 0;
     }
