@@ -170,6 +170,7 @@ export default function PoolDetailPage() {
                     open={isProvideModalOpen}
                     onOpenChange={setIsProvideModalOpen}
                     poolPrice={pool.currentPrice}
+                    hookAddress={pool.poolKey.hooks as `0x${string}`}
                 />
             )}
         </div>

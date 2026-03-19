@@ -150,6 +150,55 @@ contract TranchesRouter is IUnlockCallback {
         if (out1 > 0) IERC20(token1).safeTransfer(msg.sender, out1);
     }
 
+    // ============ Virtual Deposit from SharedPool (Aqua0 flow) ============
+
+    /// @notice Amplify capital from user's SharedPool account into a specific pool.
+    ///         No token approval needed — funds come from SharedPool freeBalance, not wallet.
+    /// @param key          The V4 pool key (must match this router's hook)
+    /// @param tickLower    Lower tick for the virtual position
+    /// @param tickUpper    Upper tick for the virtual position
+    /// @param liquidity    Virtual liquidity units to allocate
+    /// @param amount0      Amount of token0 to amplify
+    /// @param amount1      Amount of token1 to amplify
+    /// @param tranche      SENIOR or JUNIOR
+    function addLiquidityFromSharedPool(
+        PoolKey calldata key,
+        int24 tickLower,
+        int24 tickUpper,
+        uint128 liquidity,
+        uint256 amount0,
+        uint256 amount1,
+        TranchesHook.Tranche tranche
+    ) external {
+        address token0 = Currency.unwrap(key.currency0);
+        address token1 = Currency.unwrap(key.currency1);
+
+        // 1. Withdraw from user's SharedPool freeBalance to this router
+        if (amount0 > 0) sharedPool.withdraw(token0, amount0, msg.sender, address(this));
+        if (amount1 > 0) sharedPool.withdraw(token1, amount1, msg.sender, address(this));
+
+        // 2. Register tranche on hook FIRST (reverts here are safe — no position created yet)
+        hook.recordVirtualDeposit(msg.sender, key, tranche, uint256(liquidity));
+
+        // 3. Re-deposit under router's name (router owns the SharedPool position)
+        if (amount0 > 0) {
+            IERC20(token0).forceApprove(address(sharedPool), amount0);
+            sharedPool.deposit(token0, amount0, address(this));
+        }
+        if (amount1 > 0) {
+            IERC20(token1).forceApprove(address(sharedPool), amount1);
+            sharedPool.deposit(token1, amount1, address(this));
+        }
+
+        // 4. Create virtual position in SharedPool (owned by router)
+        sharedPool.addPosition(key, tickLower, tickUpper, liquidity, amount0, amount1, address(this));
+
+        // 5. Track per-LP deposits for safe withdrawal (scoped by pool)
+        bytes32 pid = keccak256(abi.encode(key));
+        if (amount0 > 0) lpDeposits[msg.sender][pid][token0] += amount0;
+        if (amount1 > 0) lpDeposits[msg.sender][pid][token1] += amount1;
+    }
+
     // ============ Legacy V4 Direct Path (backward compat) ============
 
     /// @notice Legacy: atomically register and add real V4 liquidity

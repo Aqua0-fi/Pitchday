@@ -216,13 +216,13 @@ export function TrancheStats() {
 
 // ─── Deposit Section ────────────────────────────────────────────────────────
 
-export function TrancheDeposit({ poolPrice = 2000 }: { poolPrice?: number }) {
+export function TrancheDeposit({ poolPrice = 2000, hookAddress }: { poolPrice?: number; hookAddress?: `0x${string}` }) {
   const { address } = useWallet()
   const selectedTranche = 1 // Always deposit as Junior for demo simplicity
   const [amount0, setAmount0] = useState('')
   const [amount1, setAmount1] = useState('')
   const [lastEdited, setLastEdited] = useState<'amount0' | 'amount1' | null>(null)
-  const deposit = useTranchesDeposit()
+  const deposit = useTranchesDeposit(hookAddress)
   const { balance0, balance1 } = useTokenBalances(address ?? undefined)
 
   // Read SharedPool balance to show as context
@@ -296,11 +296,9 @@ export function TrancheDeposit({ poolPrice = 2000 }: { poolPrice?: number }) {
 
   const stepLabel: Record<string, string> = {
     idle: '',
-    approving0: 'Approving mUSDC...',
-    approving1: 'Approving mWETH...',
-    depositing: 'Depositing liquidity...',
+    depositing: 'Amplifying capital...',
     confirming: 'Confirming transaction...',
-    done: 'Deposit successful!',
+    done: 'Amplification successful!',
     error: deposit.error || 'Error',
   }
 

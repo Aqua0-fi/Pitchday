@@ -5,12 +5,19 @@ import {
   TRANCHES_ROUTER,
   TRANCHES_ROUTER_ABI,
   TRANCHES_POOL_KEY,
-  ERC20_ABI,
+  TRANCHES_POOLS,
 } from '@/lib/contracts'
+import type { Address } from 'viem'
 
-type DepositStep = 'idle' | 'approving0' | 'approving1' | 'depositing' | 'confirming' | 'done' | 'error'
+type DepositStep = 'idle' | 'depositing' | 'confirming' | 'done' | 'error'
 
-export function useTranchesDeposit() {
+export function useTranchesDeposit(hookAddress?: Address) {
+  // Find the correct router for this hook
+  const poolConfig = hookAddress
+    ? TRANCHES_POOLS.find(p => p.hook.toLowerCase() === hookAddress.toLowerCase())
+    : undefined
+  const router = poolConfig?.router ?? TRANCHES_ROUTER
+
   const [step, setStep] = useState<DepositStep>('idle')
   const [error, setError] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>()
@@ -41,50 +48,25 @@ export function useTranchesDeposit() {
     // Liquidity = min of the two amounts (simple 1:1 pool heuristic)
     const liquidity = amt0 < amt1 ? amt0 : amt1 > 0n ? amt1 : amt0
 
-    // Get the correct nonce from the chain to avoid stale nonce issues
-    const getNonce = async () => {
-      if (!publicClient || !account) return undefined
-      return await publicClient.getTransactionCount({ address: account, blockTag: 'pending' })
-    }
-
     try {
-      // Approve token0 and wait for confirmation
-      if (amt0 > 0n) {
-        setStep('approving0')
-        const nonce = await getNonce()
-        const approve0Hash = await writeContractAsync({
-          address: TRANCHES_POOL_KEY.currency0,
-          abi: ERC20_ABI,
-          functionName: 'approve',
-          args: [TRANCHES_ROUTER, amt0],
-          nonce,
-        })
-        await publicClient!.waitForTransactionReceipt({ hash: approve0Hash })
-      }
+      // Build pool key for this specific hook
+      const poolKey = hookAddress ? {
+        currency0: TRANCHES_POOL_KEY.currency0,
+        currency1: TRANCHES_POOL_KEY.currency1,
+        fee: poolConfig?.fee ?? TRANCHES_POOL_KEY.fee,
+        tickSpacing: poolConfig?.tickSpacing ?? TRANCHES_POOL_KEY.tickSpacing,
+        hooks: hookAddress,
+      } : TRANCHES_POOL_KEY
 
-      // Approve token1 and wait for confirmation
-      if (amt1 > 0n) {
-        setStep('approving1')
-        const nonce = await getNonce()
-        const approve1Hash = await writeContractAsync({
-          address: TRANCHES_POOL_KEY.currency1,
-          abi: ERC20_ABI,
-          functionName: 'approve',
-          args: [TRANCHES_ROUTER, amt1],
-          nonce,
-        })
-        await publicClient!.waitForTransactionReceipt({ hash: approve1Hash })
-      }
-
-      // Deposit via new flat-param addLiquidity
+      // Amplify from SharedPool — no token approvals needed!
+      // Funds come from user's SharedPool freeBalance, not wallet.
       setStep('depositing')
-      const nonce = await getNonce()
       const hash = await writeContractAsync({
-        address: TRANCHES_ROUTER,
+        address: router,
         abi: TRANCHES_ROUTER_ABI,
-        functionName: 'addLiquidity',
+        functionName: 'addLiquidityFromSharedPool',
         args: [
-          TRANCHES_POOL_KEY,
+          poolKey,
           tickLower,
           tickUpper,
           liquidity,
@@ -92,7 +74,6 @@ export function useTranchesDeposit() {
           amt1,
           tranche,
         ],
-        nonce,
       })
 
       setStep('confirming')
@@ -101,9 +82,9 @@ export function useTranchesDeposit() {
       setStep('done')
     } catch (err) {
       setStep('error')
-      setError(err instanceof Error ? err.message : 'Deposit failed')
+      setError(err instanceof Error ? err.message : 'Amplification failed')
     }
-  }, [writeContractAsync, publicClient, account])
+  }, [writeContractAsync, publicClient, account, hookAddress, router, poolConfig])
 
   const reset = useCallback(() => {
     setStep('idle')

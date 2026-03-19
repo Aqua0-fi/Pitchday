@@ -200,6 +200,7 @@ contract DeployTranches is Script {
             // Deploy router
             TranchesRouter router = new TranchesRouter(IPoolManager(poolManagerAddr), hook, sharedPool);
             hook.setTrustedRouter(address(router));
+            sharedPool.setAuthorizedRouter(address(router), true);
             console.log("  TranchesRouter:", address(router));
 
             // Initialize pool with this fee tier
@@ -254,6 +255,7 @@ contract DeployTranches is Script {
 
         TranchesRouter tradRouter = new TranchesRouter(IPoolManager(poolManagerAddr), tradHook, isolatedPool);
         tradHook.setTrustedRouter(address(tradRouter));
+        isolatedPool.setAuthorizedRouter(address(tradRouter), true);
         console.log("  TranchesRouter:", address(tradRouter));
 
         // Use 0.30% fee (same as Standard) for fair comparison

@@ -84,6 +84,9 @@ contract SharedLiquidityPool is Ownable, ReentrancyGuard {
     /// @notice poolId => rangeKey => list of user addresses active in this range
     mapping(PoolId => mapping(bytes32 => address[])) public rangeUsers;
 
+    /// @notice Authorized routers that can withdraw on behalf of users
+    mapping(address => bool) public authorizedRouters;
+
     /// @notice Ephemeral scaled actual liquidity for the current swap (populated in preSwap, consumed in postSwap)
     /// poolId => rangeKey => user => actualLiquidity
     mapping(PoolId => mapping(bytes32 => mapping(address => uint128)))
@@ -151,18 +154,24 @@ contract SharedLiquidityPool is Ownable, ReentrancyGuard {
 
     receive() external payable {}
 
+    // ─── Router Authorization ─────────────────────────────────────────────────
+
+    function setAuthorizedRouter(address router, bool authorized) external onlyOwner {
+        authorizedRouters[router] = authorized;
+    }
+
     // ─── Internal Auth Helper ────────────────────────────────────────────────
 
     function _checkHookOrOwner(address owner) internal view {
-        if (msg.sender != owner) {
-            bool isValid = false;
-            try IAqua0BaseHookMarker(msg.sender).supportsInterface(type(IAqua0BaseHookMarker).interfaceId) returns (bool result) {
-                isValid = result;
-            } catch {
-                isValid = false;
-            }
-            if (!isValid) revert InvalidHookInterface();
+        if (msg.sender == owner) return;
+        if (authorizedRouters[msg.sender]) return;
+        bool isValid = false;
+        try IAqua0BaseHookMarker(msg.sender).supportsInterface(type(IAqua0BaseHookMarker).interfaceId) returns (bool result) {
+            isValid = result;
+        } catch {
+            isValid = false;
         }
+        if (!isValid) revert InvalidHookInterface();
     }
 
     // ─── User: Deposit / Withdraw ─────────────────────────────────────────────

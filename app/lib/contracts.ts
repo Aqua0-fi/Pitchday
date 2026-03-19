@@ -99,7 +99,7 @@ export const POOL_MANAGER: Address = '0x00B036B58a818B1BC34d502D3fE730Db729e62AC
 
 // ─── TrancheFi Multi-Pool (Unichain Sepolia) ─────────────────────────────────
 
-export const TRANCHES_SHARED_POOL: Address = '0xd969eaC3e494d04f71cB778424EC7Bf9e1DcAbaF'
+export const TRANCHES_SHARED_POOL: Address = '0x3612ECc83Ab3b15bD6B41dE41CE9C35ACd087d3a'
 
 // 4 TranchesHook pools — 3 Aqua (shared) + 1 Traditional (isolated)
 export const TRANCHES_POOLS = [
@@ -107,34 +107,34 @@ export const TRANCHES_POOLS = [
     label: 'Conservative',
     fee: 500,
     tickSpacing: 10,
-    hook: '0xFf349605984301b983D502E3999aA1F8BcBC95c5' as Address,
-    router: '0x208D40b8E84ab8950f228EbF5e6deEfA2948894C' as Address,
+    hook: '0x5B34861993e89AD636512397a5Cd29c04FBb95C5' as Address,
+    router: '0x92dB16B5d4FAb5f4c3047A79E4464Db6807B5B36' as Address,
     aqua: true,
   },
   {
     label: 'Standard',
     fee: 3000,
     tickSpacing: 60,
-    hook: '0xc3B393BC673F580D4712DcEF0e6D7045FFe195c5' as Address,
-    router: '0xe4763534b468d735B5B14DABd3986E07d9981bb3' as Address,
+    hook: '0xDF54a6C5Fc860105103d4780163c8f537dD055C5' as Address,
+    router: '0x714be4a852b913EB0F865C2e76CcC357aF49F406' as Address,
     aqua: true,
   },
   {
     label: 'Aggressive',
     fee: 10000,
     tickSpacing: 200,
-    hook: '0x2a996Ce5e3E720743eE8c1c41edCB508f10AD5C5' as Address,
-    router: '0x6a4B0474C8e5879170514Cb9c87e9E8e28b75212' as Address,
+    hook: '0x186C6E74161767DC632137C482b869A4F22a15c5' as Address,
+    router: '0x76207552632A9913A2560F3772023c5d22669895' as Address,
     aqua: true,
   },
   {
     label: 'Traditional',
     fee: 3000,
     tickSpacing: 60,
-    hook: '0xADd3CDE7F6584596A6ccf564703AEE8e959995c5' as Address,
-    router: '0x56728D7faDc01a350D0322a07af3463Cb13dd02a' as Address,
+    hook: '0x6E343256467eFE72264fD49f2229Ddbb527915C5' as Address,
+    router: '0x0753C70Cdea2eAF19FF77fe02DbA7AdEcBBC7CB1' as Address,
     aqua: false,
-    isolatedPool: '0x025B6E26eb6d406cbBa2104EE8E1970DD25b1B85' as Address,
+    isolatedPool: '0x5a409DF93C30D44e43Fa446490E52Bc770D37aF0' as Address,
   },
 ] as const
 
@@ -245,6 +245,21 @@ export const TRANCHES_HOOK_ABI = [
 export const TRANCHES_ROUTER_ABI = [
   {
     name: 'addLiquidity',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'key', ...POOL_KEY_TUPLE },
+      { name: 'tickLower', type: 'int24' },
+      { name: 'tickUpper', type: 'int24' },
+      { name: 'liquidity', type: 'uint128' },
+      { name: 'amount0', type: 'uint256' },
+      { name: 'amount1', type: 'uint256' },
+      { name: 'tranche', type: 'uint8' },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'addLiquidityFromSharedPool',
     type: 'function',
     stateMutability: 'nonpayable',
     inputs: [
