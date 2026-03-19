@@ -1,0 +1,25 @@
+{
+  "name": "@aqua0/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "local": "bun run local:down && bun run local:up",
+    "local:up": "CHAIN=base bash script/local-deploy.sh --keep-alive",
+    "local:deploy": "CHAIN=base bash script/local-deploy.sh",
+    "local:unichain": "bun run local:down && bun run local:up:unichain",
+    "local:up:unichain": "CHAIN=unichain bash script/local-deploy.sh --keep-alive",
+    "local:deploy:unichain": "CHAIN=unichain bash script/local-deploy.sh",
+    "local:down": "pkill -f 'anvil --fork-url' || true",
+    "build": "forge build",
+    "test": "FOUNDRY_OFFLINE=true forge test -vvv",
+    "fmt": "forge fmt",
+    "fmt:check": "forge fmt --check"
+  },
+  "dependencies": {
+    "@layerzerolabs/oapp-evm": "^0.4.1",
+    "@layerzerolabs/oft-evm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@layerzerolabs/test-devtools-evm-foundry": "^8.0.1"
+  }
+}

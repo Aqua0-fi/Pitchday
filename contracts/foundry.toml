@@ -1,0 +1,56 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+solc = "0.8.34"
+optimizer = true
+optimizer_runs = 10000
+via_ir = true
+fs_permissions = [{ access = "read-write", path = "./deployments" }]
+ignored_warnings_from = ["lib/", "node_modules/"]
+remappings = [
+    "forge-std/=lib/forge-std/src/",
+    "@openzeppelin/=lib/openzeppelin-contracts/",
+    "@uniswap/v4-core/=lib/v4-core/src/",
+    "@uniswap/v4-core-test/=lib/v4-core/test/",
+    "@uniswap/v4-periphery/=lib/v4-periphery/src/",
+    "reactive-lib/=lib/reactive-lib/src/",
+    "solmate/=lib/v4-core/lib/solmate/",
+    "@layerzerolabs/oapp-evm/=node_modules/@layerzerolabs/oapp-evm/",
+    "@layerzerolabs/oft-evm/=node_modules/@layerzerolabs/oft-evm/",
+    "@layerzerolabs/lz-evm-protocol-v2/=node_modules/@layerzerolabs/lz-evm-protocol-v2/",
+    "@layerzerolabs/lz-evm-messagelib-v2/=node_modules/@layerzerolabs/lz-evm-messagelib-v2/",
+    "@layerzerolabs/test-devtools-evm-foundry/=node_modules/@layerzerolabs/test-devtools-evm-foundry/",
+    "solidity-bytes-utils/=node_modules/solidity-bytes-utils/"
+]
+
+[profile.ci]
+src = "src"
+out = "out"
+libs = ["lib"]
+solc = "0.8.34"
+optimizer = true
+optimizer_runs = 10000
+via_ir = true
+fuzz = { runs = 256 }
+
+[fuzz]
+runs = 1000
+max_test_rejects = 100000
+seed = '0x1'
+failure_persist_dir = "test/fuzz-failures"
+dictionary_weight = 80
+
+[fmt]
+line_length = 120
+tab_width = 4
+bracket_spacing = true
+
+[rpc_endpoints]
+base = "${BASE_RPC_URL}"
+unichain = "${UNICHAIN_RPC_URL}"
+
+[etherscan]
+mainnet = { key = "${ETHERSCAN_API_KEY}" }
+base = { key = "${ETHERSCAN_API_KEY}" }
+unichain = { key = "${ETHERSCAN_API_KEY}" }
