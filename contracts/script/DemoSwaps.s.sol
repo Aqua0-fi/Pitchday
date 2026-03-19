@@ -1,107 +1,122 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.34;
+pragma solidity ^0.8.26;
 
-import {Script, console} from "forge-std/Script.sol";
-import {IPoolManager} from "@uniswap/v4-core/interfaces/IPoolManager.sol";
-import {PoolKey} from "@uniswap/v4-core/types/PoolKey.sol";
-import {Currency} from "@uniswap/v4-core/types/Currency.sol";
-import {IHooks} from "@uniswap/v4-core/interfaces/IHooks.sol";
-import {PoolSwapTest} from "@uniswap/v4-core/test/PoolSwapTest.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "forge-std/Script.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import {SwapParams} from "v4-core/types/PoolOperation.sol";
+import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
+import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
-/// @title DemoSwaps
-/// @notice Executes 10 random swaps across all 4 TrancheFi pools for pitch demo.
-///         Swaps alternate between zeroForOne and oneForZero to simulate real trading.
+/// @notice 5 demo swaps across all 4 pools (round-robin).
+///         Run: forge script script/DemoSwaps.s.sol:DemoSwaps \
+///              --rpc-url https://sepolia.unichain.org \
+///              --private-key $DEPLOYER_PRIVATE_KEY --broadcast
 contract DemoSwaps is Script {
-    // ─── Addresses ─────────────────────────────────────────────────────────────
-    address constant POOL_MANAGER = 0x00B036B58a818B1BC34d502D3fE730Db729e62AC;
-    address constant MUSDC = 0x73c56ddD816e356387Caf740c804bb9D379BE47E;
-    address constant MWETH = 0x7fF28651365c735c22960E27C2aFA97AbE4Cf2Ad;
+    // ─── Addresses ───────────────────────────────────────────────────────────────
+    address constant MUSDC  = 0x73c56ddD816e356387Caf740c804bb9D379BE47E;
+    address constant MWETH  = 0x7fF28651365c735c22960E27C2aFA97AbE4Cf2Ad;
+    address constant ROUTER = 0xB9818483D01ca0e721849703C58148CFb81328fC; // PoolSwapTest
 
-    // Pool hooks (from deployment)
-    address constant HOOK_CONSERVATIVE = 0xFf349605984301b983D502E3999aA1F8BcBC95c5;
-    address constant HOOK_STANDARD     = 0xc3B393BC673F580D4712DcEF0e6D7045FFe195c5;
-    address constant HOOK_AGGRESSIVE   = 0x2a996Ce5e3E720743eE8c1c41edCB508f10AD5C5;
-    address constant HOOK_TRADITIONAL  = 0xADd3CDE7F6584596A6ccf564703AEE8e959995c5;
+    // Hooks (4 pools)
+    address constant HOOK_CONSERVATIVE = 0xF4BcA9aDe186EfB2f0d7A07791EE2b0CEB6295C5;
+    address constant HOOK_STANDARD     = 0xc792e44a3a177B8ECdabae18b5aFcAa6545255c5;
+    address constant HOOK_AGGRESSIVE   = 0xc5312086D0799f4Ed78e5F602785140634B3d5c5;
+    address constant HOOK_TRADITIONAL  = 0x335eAB1A624C156B991B76142EcFe696b6Fa55C5;
 
-    struct PoolInfo {
-        string label;
-        uint24 fee;
-        int24 tickSpacing;
-        address hook;
-    }
+    // sqrtPriceLimitX96 boundaries
+    uint160 constant MIN_SQRT_PRICE = 4295128740;
+    uint160 constant MAX_SQRT_PRICE = 1461446703485210103287273052203988822378723970341;
 
     function run() external {
-        uint256 deployerPk = vm.envUint("DEPLOYER_PRIVATE_KEY");
-        address deployer = vm.addr(deployerPk);
+        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
+        address deployer = vm.addr(pk);
 
-        vm.startBroadcast(deployerPk);
+        vm.startBroadcast(pk);
 
-        console.log("=== Demo Swaps ===");
+        // Approve router for both tokens (infinite)
+        IERC20(MUSDC).approve(ROUTER, type(uint256).max);
+        IERC20(MWETH).approve(ROUTER, type(uint256).max);
+
+        console.log("=== 5 Demo Swaps (round-robin across 4 pools) ===");
         console.log("Deployer:", deployer);
 
-        // Deploy a PoolSwapTest router
-        PoolSwapTest swapRouter = new PoolSwapTest(IPoolManager(POOL_MANAGER));
-        console.log("SwapRouter:", address(swapRouter));
+        // ── Swap 1: Conservative (0.05%) — 500 mUSDC → mWETH ──
+        _swap(
+            HOOK_CONSERVATIVE, 500, 10,
+            true,        // zeroForOne (mUSDC → mWETH)
+            500e18,      // 500 mUSDC
+            "Swap 1: 500 mUSDC -> mWETH via Conservative (0.05%)"
+        );
 
-        // Approve tokens for swap router
-        IERC20(MUSDC).approve(address(swapRouter), type(uint256).max);
-        IERC20(MWETH).approve(address(swapRouter), type(uint256).max);
+        // ── Swap 2: Standard (0.30%) — 0.1 mWETH → mUSDC ──
+        _swap(
+            HOOK_STANDARD, 3000, 60,
+            false,       // oneForZero (mWETH → mUSDC)
+            0.1e18,      // 0.1 mWETH
+            "Swap 2: 0.1 mWETH -> mUSDC via Standard (0.30%)"
+        );
 
-        // Define pools
-        PoolInfo[4] memory pools = [
-            PoolInfo("Conservative (0.05%)", 500, 10, HOOK_CONSERVATIVE),
-            PoolInfo("Standard (0.30%)", 3000, 60, HOOK_STANDARD),
-            PoolInfo("Aggressive (1.00%)", 10000, 200, HOOK_AGGRESSIVE),
-            PoolInfo("Traditional (0.30%)", 3000, 60, HOOK_TRADITIONAL)
-        ];
+        // ── Swap 3: Aggressive (1.00%) — 1000 mUSDC → mWETH ──
+        _swap(
+            HOOK_AGGRESSIVE, 10000, 200,
+            true,        // zeroForOne (mUSDC → mWETH)
+            1000e18,     // 1000 mUSDC
+            "Swap 3: 1000 mUSDC -> mWETH via Aggressive (1.00%)"
+        );
 
-        // 10 swaps: cycle through pools, alternate direction
-        uint256 swapAmount = 0.1 ether; // 0.1 mWETH per swap (or 200 mUSDC)
+        // ── Swap 4: Traditional (0.30%) — 0.05 mWETH → mUSDC ──
+        _swap(
+            HOOK_TRADITIONAL, 3000, 60,
+            false,       // oneForZero (mWETH → mUSDC)
+            0.05e18,     // 0.05 mWETH
+            "Swap 4: 0.05 mWETH -> mUSDC via Traditional (0.30%)"
+        );
 
-        for (uint256 i = 0; i < 10; i++) {
-            uint256 poolIdx = i % 4; // Rotate across all 4 pools
-            bool zeroForOne = (i % 2 == 0); // Alternate direction
-
-            PoolKey memory key = PoolKey({
-                currency0: Currency.wrap(MUSDC),
-                currency1: Currency.wrap(MWETH),
-                fee: pools[poolIdx].fee,
-                tickSpacing: pools[poolIdx].tickSpacing,
-                hooks: IHooks(pools[poolIdx].hook)
-            });
-
-            int256 amountSpecified = zeroForOne
-                ? int256(200 ether) // 200 mUSDC → mWETH
-                : int256(swapAmount); // 0.1 mWETH → mUSDC
-
-            IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
-                zeroForOne: zeroForOne,
-                amountSpecified: -amountSpecified, // negative = exact input
-                sqrtPriceLimitX96: zeroForOne
-                    ? 4295128739 + 1 // MIN_SQRT_PRICE + 1
-                    : 1461446703485210103287273052203988822378723970342 - 1 // MAX_SQRT_PRICE - 1
-            });
-
-            PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({
-                takeClaims: false,
-                settleUsingBurn: false
-            });
-
-            console.log("");
-            console.log("--- Swap", i + 1, "---");
-            console.log("  Pool:", pools[poolIdx].label);
-            console.log("  Direction:", zeroForOne ? "mUSDC -> mWETH" : "mWETH -> mUSDC");
-
-            swapRouter.swap(key, params, settings, "");
-
-            console.log("  Done!");
-        }
-
-        console.log("");
-        console.log("=== All 10 swaps complete ===");
-        console.log("Check each pool's pendingFees to compare Aqua vs Traditional earnings");
+        // ── Swap 5: Conservative (0.05%) — 200 mUSDC → mWETH ──
+        _swap(
+            HOOK_CONSERVATIVE, 500, 10,
+            true,        // zeroForOne (mUSDC → mWETH)
+            200e18,      // 200 mUSDC
+            "Swap 5: 200 mUSDC -> mWETH via Conservative (0.05%)"
+        );
 
         vm.stopBroadcast();
+        console.log("=== All 5 swaps complete ===");
+    }
+
+    function _swap(
+        address hook,
+        uint24 fee,
+        int24 tickSpacing,
+        bool zeroForOne,
+        uint256 amountIn,
+        string memory label
+    ) internal {
+        console.log(label);
+
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(MUSDC),
+            currency1: Currency.wrap(MWETH),
+            fee: fee,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(hook)
+        });
+
+        PoolSwapTest(ROUTER).swap(
+            key,
+            SwapParams({
+                zeroForOne: zeroForOne,
+                amountSpecified: -int256(amountIn), // negative = exact input
+                sqrtPriceLimitX96: zeroForOne ? MIN_SQRT_PRICE : MAX_SQRT_PRICE
+            }),
+            PoolSwapTest.TestSettings({
+                takeClaims: false,
+                settleUsingBurn: false
+            }),
+            ""
+        );
     }
 }
