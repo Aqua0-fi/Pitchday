@@ -12,8 +12,11 @@ import { V4Pool } from '@/lib/v4-api'
 import { useToast } from '@/hooks/use-toast'
 import { useWriteContract, usePublicClient } from 'wagmi'
 import { formatUnits, parseUnits } from 'viem'
-import { ERC20_ABI, TRANCHES_SHARED_POOL } from '@/lib/contracts'
+import { ERC20_ABI, TRANCHES_SHARED_POOL, TRANCHES_POOLS } from '@/lib/contracts'
 import { ArrowDownToLine, ArrowUpFromLine, RefreshCw } from 'lucide-react'
+
+// Count Aqua-shared pools for amplification display
+const AQUA_POOL_COUNT = TRANCHES_POOLS.filter(p => p.aqua).length
 
 const SHARED_POOL_ABI = [
   {
@@ -154,8 +157,9 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                 <div className="space-y-4 pt-4">
                     {uniqueTokens.map(token => {
                         const bal = balances?.find(b => b.token.toLowerCase() === token.address.toLowerCase())
-                        const walletFmt = bal ? Number(formatUnits(BigInt(bal.walletBalance), token.decimals)).toFixed(4) : "0.0000"
-                        const freeFmt = bal ? Number(formatUnits(BigInt(bal.freeBalance), token.decimals)).toFixed(4) : "0.0000"
+                        const depositedFmt = bal ? Number(formatUnits(BigInt(bal.freeBalance), token.decimals)).toFixed(4) : "0.0000"
+                        const amplifiedVal = bal ? BigInt(bal.freeBalance) * BigInt(AQUA_POOL_COUNT) : 0n
+                        const sharedFmt = bal ? Number(formatUnits(amplifiedVal, token.decimals)).toFixed(4) : "0.0000"
 
                         return (
                             <div key={token.address} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl border border-border/50 bg-secondary/10">
@@ -164,8 +168,8 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
                                     <div>
                                         <h4 className="font-semibold">{token.symbol}</h4>
                                         <div className="flex gap-4 mt-1 text-sm font-mono flex-wrap">
-                                            <span className="text-muted-foreground">Wallet: {walletFmt}</span>
-                                            <span className="text-emerald-500 font-medium">Shared: {freeFmt}</span>
+                                            <span className="text-muted-foreground">Deposited: {depositedFmt}</span>
+                                            <span className="text-emerald-500 font-medium">Virtual ({AQUA_POOL_COUNT}x): {sharedFmt}</span>
                                             {bal && BigInt(bal.earnedFees || "0") > 0n && (
                                                 <span className="text-amber-500 font-medium">Fees: {Number(formatUnits(BigInt(bal.earnedFees), token.decimals)).toFixed(4)}</span>
                                             )}
