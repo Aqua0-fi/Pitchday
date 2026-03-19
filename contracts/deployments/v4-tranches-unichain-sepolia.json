@@ -10,6 +10,7 @@
     { "label": "Conservative", "fee": 500, "tickSpacing": 10, "hook": "0x702E80d64aDa53cB66Bdc96Fa2F86Fd8e46a15C5", "router": "0x7FFf5F609A9a99196f1d5456404B0c5bF127E843", "aqua": true },
     { "label": "Standard", "fee": 3000, "tickSpacing": 60, "hook": "0x2Ec2141371aa6bC8C5FdcB7A1A46F5180E5595C5", "router": "0x3493DaE8faaDbe5c2a9b4423053264F046dEEaab", "aqua": true },
     { "label": "Aggressive", "fee": 10000, "tickSpacing": 200, "hook": "0x1eB5129D6f36e2Ade3a53E6E2e83223318f295C5", "router": "0x91b10Be585c06c15Ae37dc364206352B342F5e66", "aqua": true },
-    { "label": "Traditional", "fee": 3000, "tickSpacing": 60, "hook": "0x7Ce487bB7dC0166E2B62caDA01E9130c6b9715C5", "router": "0x3BCbd3b5A03b3e30BA8103F513c0C3c80c8557fD", "aqua": false, "isolatedPool": "0x4c551cFBE3851832A517011d5A6555dBcadD8417" }
+    { "label": "Traditional", "fee": 3000, "tickSpacing": 60, "hook": "0x7Ce487bB7dC0166E2B62caDA01E9130c6b9715C5", "router": "0x3BCbd3b5A03b3e30BA8103F513c0C3c80c8557fD", "aqua": false, "isolatedPool": "0x4c551cFBE3851832A517011d5A6555dBcadD8417" },
+    { "label": "TrancheFi", "fee": 500, "tickSpacing": 10, "hook": "0x14a3324f394B9972D35B739CDa511d90c15BD545", "router": "0xDafC18cdB29245383854F730a25A2f09cfEBEe6E", "aqua": true }
   ]
 }

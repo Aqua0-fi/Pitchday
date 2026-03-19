@@ -137,6 +137,14 @@ export const TRANCHES_POOLS = [
     aqua: false,
     isolatedPool: '0x4c551cFBE3851832A517011d5A6555dBcadD8417' as Address,
   },
+  {
+    label: 'TrancheFi',
+    fee: 500,
+    tickSpacing: 10,
+    hook: '0x14a3324f394B9972D35B739CDa511d90c15BD545' as Address,
+    router: '0xDafC18cdB29245383854F730a25A2f09cfEBEe6E' as Address,
+    aqua: true,
+  },
 ] as const
 
 // Default to Standard pool for backwards compat
@@ -152,6 +160,11 @@ export function isTranchesHook(hookAddress: string): boolean {
 const TRADITIONAL_HOOK = TRANCHES_POOLS.find(p => !p.aqua)?.hook.toLowerCase()
 export function isTraditionalHook(hookAddress: string): boolean {
   return hookAddress.toLowerCase() === TRADITIONAL_HOOK
+}
+
+const TRANCHEFI_HOOK = TRANCHES_POOLS.find(p => p.label === 'TrancheFi')?.hook.toLowerCase()
+export function isTrancheFiPool(hookAddress: string): boolean {
+  return hookAddress.toLowerCase() === TRANCHEFI_HOOK
 }
 
 // Global Aqua0 mock token addresses (Unichain Sepolia)

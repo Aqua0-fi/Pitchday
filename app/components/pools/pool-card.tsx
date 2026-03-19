@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { TokenPairIcon } from '@/components/token-icon'
 import type { V4Pool } from '@/lib/v4-api'
 import { ArrowUpRight, TrendingUp, ShieldCheck } from 'lucide-react'
-import { isTranchesHook, isTraditionalHook } from '@/lib/contracts'
+import { isTranchesHook, isTraditionalHook, isTrancheFiPool } from '@/lib/contracts'
 
 interface PoolCardProps {
     pool: V4Pool
@@ -49,9 +49,13 @@ export function PoolCard({ pool }: PoolCardProps) {
                     <div className="flex items-center gap-3">
                         <TokenPairIcon tokens={tokenPair as any} size="lg" />
                         <div>
-                            <p className="text-xs font-medium text-muted-foreground">Uniswap V4</p>
+                            <p className="text-xs font-medium text-muted-foreground">
+                                {isTrancheFiPool(pool.poolKey.hooks) ? 'TrancheFi x Aqua0' : 'Uniswap V4'}
+                            </p>
                             <h3 className="text-base font-semibold">
-                                {pool.token0.symbol}/{pool.token1.symbol}
+                                {isTrancheFiPool(pool.poolKey.hooks)
+                                    ? 'TrancheFi (Senior/Junior)'
+                                    : `${pool.token0.symbol}/${pool.token1.symbol}`}
                             </h3>
                             <span className="inline-block mt-0.5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider rounded-full bg-violet-500/10 text-violet-400">
                                 Aqua0 Hook
