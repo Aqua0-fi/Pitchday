@@ -160,15 +160,27 @@ export function RealLiquidityManager({ pools }: RealLiquidityManagerProps) {
             const amountParsed = parseUnits(amount, activeToken.decimals)
 
             if (actionDialog.type === 'deposit') {
-                // Step 1: Approve token to SharedPool
-                toast({ title: `Approving ${activeToken.symbol}...`, description: 'Confirm in wallet' })
-                const approveHash = await writeContractAsync({
+                // Step 1: Check allowance, approve if needed (use maxUint256 for infinite approval)
+                const allowance = await publicClient!.readContract({
                     address: activeToken.address as `0x${string}`,
                     abi: ERC20_ABI,
-                    functionName: 'approve',
-                    args: [TRANCHES_SHARED_POOL, amountParsed],
-                })
-                await publicClient!.waitForTransactionReceipt({ hash: approveHash })
+                    functionName: 'allowance',
+                    args: [address as `0x${string}`, TRANCHES_SHARED_POOL],
+                }) as bigint
+
+                if (allowance < amountParsed) {
+                    toast({ title: `Approving ${activeToken.symbol}...`, description: 'Confirm in wallet' })
+                    const maxUint = 115792089237316195423570985008687907853269984665640564039457584007913129639935n
+                    const approveHash = await writeContractAsync({
+                        address: activeToken.address as `0x${string}`,
+                        abi: ERC20_ABI,
+                        functionName: 'approve',
+                        args: [TRANCHES_SHARED_POOL, maxUint],
+                    })
+                    await publicClient!.waitForTransactionReceipt({ hash: approveHash })
+                    // Small delay to let MetaMask sync nonce
+                    await new Promise(r => setTimeout(r, 2000))
+                }
 
                 // Step 2: Deposit to SharedPool
                 toast({ title: `Depositing ${activeToken.symbol}...`, description: 'Confirm in wallet' })
