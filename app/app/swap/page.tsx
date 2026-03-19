@@ -116,11 +116,13 @@ export default function SwapPage() {
   // V4 Pools from backend
   const { data: v4Pools, isLoading: isLoadingPools } = useV4Pools(backendChainId ?? 84532)
 
-  // Find the exact matching pool for the selected tokens
-  const matchedPool = v4Pools?.find((p) =>
+  // Find ALL matching pools for the selected token pair, then round-robin across them
+  const [swapCounter, setSwapCounter] = useState(0)
+  const matchingPools = v4Pools?.filter((p) =>
     (p.token0.address.toLowerCase() === fromToken?.address.toLowerCase() && p.token1.address.toLowerCase() === toToken?.address.toLowerCase()) ||
     (p.token1.address.toLowerCase() === fromToken?.address.toLowerCase() && p.token0.address.toLowerCase() === toToken?.address.toLowerCase())
-  )
+  ) ?? []
+  const matchedPool = matchingPools.length > 0 ? matchingPools[swapCounter % matchingPools.length] : undefined
 
   const hasLiquidity = !!matchedPool
 
@@ -188,6 +190,8 @@ export default function SwapPage() {
       decimalsIn: fromToken.decimals,
       slippageBps: Math.round(slippage * 100), // 0.5% → 50 bps
     })
+    // Rotate to next pool for the following swap
+    setSwapCounter(c => c + 1)
   }
 
   const isSwapBusy = swapStep !== 'idle' && swapStep !== 'done' && swapStep !== 'error'
@@ -494,6 +498,16 @@ export default function SwapPage() {
                 />
               </div>
             </div>
+
+            {/* Pool Routing Info */}
+            {matchedPool && matchingPools.length > 1 && (
+              <div className="border-b border-border bg-secondary/20 px-4 py-2.5 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Routing via</span>
+                <span className="text-xs font-medium text-emerald-400">
+                  {matchedPool.label || `Pool ${matchedPool.fee / 10000}%`} ({swapCounter % matchingPools.length + 1}/{matchingPools.length})
+                </span>
+              </div>
+            )}
 
             {/* No Liquidity Warning */}
             {fromToken && toToken && hasValidAmount && !isLoadingPools && !hasLiquidity && (
