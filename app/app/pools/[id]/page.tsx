@@ -10,8 +10,8 @@ import { useV4Pools } from '@/hooks/use-v4-pools'
 import { ArrowLeft, Info, Droplets } from 'lucide-react'
 import { useWallet } from '@/contexts/wallet-context'
 import { TranchesLiquidityModal } from '@/components/pools/tranches-liquidity-modal'
-import { isTranchesHook, isTraditionalHook, TRANCHES_SHARED_POOL, TRANCHES_POOLS, TRANCHES_POOL_KEY, ERC20_ABI } from '@/lib/contracts'
-import { useReadContracts } from 'wagmi'
+import { isTranchesHook, isTraditionalHook, TRANCHES_SHARED_POOL, TRANCHES_POOLS, TRANCHES_POOL_KEY, ERC20_ABI, TRANCHES_HOOK_ABI } from '@/lib/contracts'
+import { useReadContracts, useReadContract } from 'wagmi'
 import { formatUnits } from 'viem'
 import { RSCOracleSimulator } from '@/components/pools/rsc-oracle-simulator'
 // no recharts needed
@@ -179,10 +179,45 @@ export default function PoolDetailPage() {
 // ─── Pool Stats + Liquidity Bar Chart ──────────────────────────────────────────
 
 function PoolStatsWithChart({ pool, sharedPoolAddr, isAqua }: { pool: any; sharedPoolAddr: string; isAqua: boolean }) {
-    const { mUSDC, mWETH, isLoading } = usePoolTokenBalances(sharedPoolAddr)
+    // For Aqua pools: show only liquidity amplified to THIS pool (from getPoolStats)
+    // For traditional pools: show actual token balances in isolated pool
+    const { mUSDC: rawMUSDC, mWETH: rawMWETH, isLoading: balLoading } = usePoolTokenBalances(sharedPoolAddr)
 
-    const mWETHNum = Number(formatUnits(mWETH, 18))
-    const mUSDCNum = Number(formatUnits(mUSDC, 18))
+    const hookAddr = pool.poolKey?.hooks
+    const poolKey = hookAddr ? {
+        currency0: TRANCHES_POOL_KEY.currency0,
+        currency1: TRANCHES_POOL_KEY.currency1,
+        fee: pool.fee,
+        tickSpacing: pool.tickSpacing,
+        hooks: hookAddr,
+    } : undefined
+
+    const { data: hookStats, isLoading: statsLoading } = useReadContract({
+        address: hookAddr as `0x${string}`,
+        abi: TRANCHES_HOOK_ABI,
+        functionName: 'getPoolStats',
+        args: poolKey ? [poolKey] : undefined,
+        query: { enabled: isAqua && !!hookAddr && !!poolKey, refetchInterval: 10_000 },
+    })
+
+    const isLoading = isAqua ? statsLoading : balLoading
+
+    let mWETHNum: number
+    let mUSDCNum: number
+
+    if (isAqua && hookStats) {
+        // Show liquidity amplified to this specific pool
+        const [totalSenior, totalJunior] = hookStats as [bigint, bigint, bigint, bigint, bigint, bigint]
+        const totalLiquidity = totalSenior + totalJunior
+        // totalLiquidity is in liquidity units — for display, show as both tokens
+        // Approximate: split evenly assuming balanced pool (each side = totalLiquidity)
+        mWETHNum = Number(formatUnits(totalLiquidity, 18))
+        mUSDCNum = Number(formatUnits(totalLiquidity, 18)) * 2000 // 1 ETH = 2000 USDC
+    } else {
+        // Traditional pool: show actual balances
+        mWETHNum = Number(formatUnits(rawMWETH, 18))
+        mUSDCNum = Number(formatUnits(rawMUSDC, 18))
+    }
     const maxVal = Math.max(mWETHNum, mUSDCNum, 1)
 
     return (
