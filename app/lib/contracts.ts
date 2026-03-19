@@ -11,6 +11,7 @@ export const USE_AQUA_BIT = '289480223093290488558927462521719769633174961664101
 export const BACKEND_CHAIN_IDS: Record<string | number, number> = {
   base: 8453,
   unichain: 1301,
+  'unichain-sepolia': 1301,
   local: 696969,
   84532: 84532,
   1301: 1301,

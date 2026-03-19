@@ -33,7 +33,9 @@ import type { Address } from 'viem'
 // Map our internal chain IDs to wagmi chain IDs
 const chainIdMap: Record<string, number[]> = {
   base: [base.id, baseSepolia.id],     // 8453, 84532
+  'base-sepolia': [baseSepolia.id],
   unichain: [130, 1301],               // mainnet, sepolia
+  'unichain-sepolia': [1301],
   local: [696969],                     // local devnet
 }
 
@@ -45,7 +47,8 @@ function isOnCorrectChain(walletChainId: number | undefined, selectedChainId: st
 
 function getTargetChainId(selectedChainId: string): number {
   if (selectedChainId === 'local') return 696969;
-  return selectedChainId === 'base' ? baseSepolia.id : 1301
+  if (selectedChainId === 'unichain-sepolia' || selectedChainId === 'unichain') return 1301;
+  return baseSepolia.id
 }
 
 const STEP_LABELS: Record<string, string> = {

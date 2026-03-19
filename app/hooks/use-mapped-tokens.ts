@@ -17,12 +17,15 @@ import type { Token, Chain } from '@/lib/types'
 export function useMappedTokens(chain?: string) {
   const { data: apiTokens, isLoading: tokensLoading, error } = useTokens(chain)
   const isLocal = chain === 'local'
-  const { data: v4Pools, isLoading: poolsLoading } = useV4Pools(isLocal ? 696969 : undefined)
+  const isUnichain = chain === 'unichain-sepolia' || chain === 'unichain'
+  const usePoolTokens = isLocal || isUnichain
+  const poolChainId = isLocal ? 696969 : isUnichain ? 1301 : undefined
+  const { data: v4Pools, isLoading: poolsLoading } = useV4Pools(poolChainId)
 
-  const isLoading = isLocal ? poolsLoading : tokensLoading
+  const isLoading = usePoolTokens ? poolsLoading : tokensLoading
 
   const tokens: Token[] = useMemo(() => {
-    if (isLocal) {
+    if (usePoolTokens) {
       if (!v4Pools) return []
       const seen = new Set<string>()
       const out: Token[] = []
@@ -74,12 +77,12 @@ export function useMappedTokens(chain?: string) {
       })
     }
     return out
-  }, [apiTokens, v4Pools, isLocal])
+  }, [apiTokens, v4Pools, usePoolTokens])
 
   /** Resolve the on-chain address for a token symbol on a specific chain. */
   const resolveAddress = useCallback(
     (symbol: string, targetChain: string): string | undefined => {
-      if (targetChain === 'local') {
+      if (targetChain === 'local' || targetChain === 'unichain-sepolia' || targetChain === 'unichain') {
         return tokens.find((t) => t.symbol === symbol)?.address
       }
       if (!apiTokens) return undefined
@@ -99,10 +102,12 @@ export function useMappedChains() {
   const { data: apiChains, isLoading, error } = useChains()
 
   const chains: Chain[] = useMemo(() => {
-    if (!apiChains) return [getChainById(696969)] // Default to devnet to avoid empty state
+    // Always include Unichain Sepolia as primary chain for demo
+    const unichain = getChainById(1301)
+    if (!apiChains) return [unichain]
     const mapped = apiChains.map((c) => getChainById(c.id))
-    if (!mapped.some(c => c.id === 'local')) {
-      mapped.push(getChainById(696969))
+    if (!mapped.some(c => c.id === 'unichain-sepolia' || c.id === 'unichain')) {
+      mapped.unshift(unichain)
     }
     return mapped
   }, [apiChains])
